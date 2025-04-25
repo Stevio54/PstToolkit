@@ -334,6 +334,12 @@
             Disposes the PST file, releasing resources.
             </summary>
         </member>
+        <member name="M:PstToolkit.PstFile.Dispose(System.Boolean)">
+            <summary>
+            Releases the unmanaged resources used by the PstFile and optionally releases the managed resources.
+            </summary>
+            <param name="disposing">true to release both managed and unmanaged resources; false to release only unmanaged resources.</param>
+        </member>
         <member name="T:PstToolkit.PstFolder">
             <summary>
             Represents a folder in a PST file.
@@ -364,6 +370,11 @@
             Gets the message count.
             </summary>
         </member>
+        <member name="P:PstToolkit.PstFolder.UnreadCount">
+            <summary>
+            Gets the number of unread messages in this folder.
+            </summary>
+        </member>
         <member name="P:PstToolkit.PstFolder.SubFolders">
             <summary>
             Gets the list of subfolders.
@@ -377,6 +388,11 @@
         <member name="P:PstToolkit.PstFolder.Type">
             <summary>
             Gets the folder type (e.g., Inbox, Sent Items, etc.).
+            </summary>
+        </member>
+        <member name="P:PstToolkit.PstFolder.HasSubFolders">
+            <summary>
+            Gets whether this folder has subfolders.
             </summary>
         </member>
         <member name="T:PstToolkit.PstFolder.FolderType">
@@ -455,6 +471,21 @@
             Deletes this folder and all its contents.
             </summary>
             <exception cref="T:PstToolkit.Exceptions.PstAccessException">Thrown if the PST file is read-only or if the folder is the root folder.</exception>
+        </member>
+        <member name="M:PstToolkit.PstFolder.MoveTo(PstToolkit.PstFolder)">
+            <summary>
+            Moves this folder to become a subfolder of the specified target folder.
+            </summary>
+            <param name="targetFolder">The folder that will become this folder's new parent.</param>
+            <exception cref="T:PstToolkit.Exceptions.PstAccessException">Thrown if the PST file is read-only or if the folder is the root folder.</exception>
+            <exception cref="T:System.ArgumentException">Thrown if the target folder is this folder or a subfolder of this folder.</exception>
+        </member>
+        <member name="M:PstToolkit.PstFolder.GetSystemFolder(PstToolkit.PstFolder.FolderType)">
+            <summary>
+            Gets special system folders (Inbox, Sent Items, etc.) if they exist.
+            </summary>
+            <param name="folderType">The type of system folder to find.</param>
+            <returns>The system folder if found, or null if not found.</returns>
         </member>
         <member name="T:PstToolkit.PstMessage">
             <summary>
@@ -545,14 +576,23 @@
         <member name="F:PstToolkit.PstMessage.MessageImportance.High">
             <summary>High importance</summary>
         </member>
-        <member name="M:PstToolkit.PstMessage.Create(System.String,System.String,System.String,System.String)">
+        <member name="M:PstToolkit.PstMessage.Create(PstToolkit.PstFile,System.String,System.String,System.String,System.String)">
             <summary>
             Creates a new email message that can be added to a PST file.
             </summary>
+            <param name="pstFile">The PST file to create the message in.</param>
             <param name="subject">The subject of the email.</param>
             <param name="body">The body text of the email.</param>
             <param name="senderEmail">The sender's email address.</param>
             <param name="senderName">The sender's display name.</param>
+            <returns>A new PstMessage instance.</returns>
+        </member>
+        <member name="M:PstToolkit.PstMessage.Create(PstToolkit.PstFile,MimeKit.MimeMessage)">
+            <summary>
+            Creates a new email message from a MimeKit MimeMessage.
+            </summary>
+            <param name="pstFile">The PST file to create the message in.</param>
+            <param name="mimeMessage">The MimeKit message to convert.</param>
             <returns>A new PstMessage instance.</returns>
         </member>
         <member name="M:PstToolkit.PstMessage.ToMimeMessage">
@@ -567,11 +607,122 @@
             </summary>
             <returns>The raw message content as a byte array.</returns>
         </member>
+        <member name="T:PstToolkit.PstMessage.Attachment">
+            <summary>
+            Represents an attachment to an email message.
+            </summary>
+        </member>
+        <member name="P:PstToolkit.PstMessage.Attachment.Filename">
+            <summary>
+            Gets the short filename of the attachment.
+            </summary>
+        </member>
+        <member name="P:PstToolkit.PstMessage.Attachment.LongFilename">
+            <summary>
+            Gets the long filename of the attachment.
+            </summary>
+        </member>
+        <member name="P:PstToolkit.PstMessage.Attachment.ContentType">
+            <summary>
+            Gets the content type/MIME type of the attachment.
+            </summary>
+        </member>
+        <member name="P:PstToolkit.PstMessage.Attachment.Size">
+            <summary>
+            Gets the size of the attachment in bytes.
+            </summary>
+        </member>
+        <member name="P:PstToolkit.PstMessage.Attachment.IsEmbedded">
+            <summary>
+            Gets whether the attachment is embedded (displayed inline in the message).
+            </summary>
+        </member>
+        <member name="M:PstToolkit.PstMessage.Attachment.GetContent">
+            <summary>
+            Gets the attachment data as a byte array.
+            </summary>
+            <returns>The attachment content as a byte array.</returns>
+        </member>
         <member name="M:PstToolkit.PstMessage.GetAttachments">
             <summary>
             Gets the attachments of the message.
             </summary>
-            <returns>A list of attachments as byte arrays with their filenames.</returns>
+            <returns>A list of attachments.</returns>
+        </member>
+        <member name="M:PstToolkit.PstMessage.AddAttachment(System.String,System.Byte[],System.String)">
+            <summary>
+            Adds an attachment to this message.
+            </summary>
+            <param name="filename">The filename of the attachment.</param>
+            <param name="content">The content of the attachment as a byte array.</param>
+            <param name="contentType">The content type/MIME type of the attachment.</param>
+            <returns>The newly added attachment.</returns>
+        </member>
+        <member name="M:PstToolkit.PstMessage.RemoveAttachment(PstToolkit.PstMessage.Attachment)">
+            <summary>
+            Removes an attachment from this message.
+            </summary>
+            <param name="attachment">The attachment to remove.</param>
+        </member>
+        <member name="T:PstToolkit.PstMessage.Recipient">
+            <summary>
+            Represents a recipient of an email message.
+            </summary>
+        </member>
+        <member name="P:PstToolkit.PstMessage.Recipient.DisplayName">
+            <summary>
+            Gets the display name of the recipient.
+            </summary>
+        </member>
+        <member name="P:PstToolkit.PstMessage.Recipient.EmailAddress">
+            <summary>
+            Gets the email address of the recipient.
+            </summary>
+        </member>
+        <member name="P:PstToolkit.PstMessage.Recipient.Type">
+            <summary>
+            Gets the recipient type (To, Cc, Bcc).
+            </summary>
+        </member>
+        <member name="P:PstToolkit.PstMessage.Recipient.FullAddress">
+            <summary>
+            Gets a string representing the recipient in "Display Name email" format.
+            </summary>
+        </member>
+        <member name="T:PstToolkit.PstMessage.RecipientType">
+            <summary>
+            Enumeration of recipient types.
+            </summary>
+        </member>
+        <member name="F:PstToolkit.PstMessage.RecipientType.To">
+            <summary>Primary recipient (To)</summary>
+        </member>
+        <member name="F:PstToolkit.PstMessage.RecipientType.Cc">
+            <summary>Carbon copy recipient (CC)</summary>
+        </member>
+        <member name="F:PstToolkit.PstMessage.RecipientType.Bcc">
+            <summary>Blind carbon copy recipient (BCC)</summary>
+        </member>
+        <member name="M:PstToolkit.PstMessage.GetRecipients">
+            <summary>
+            Gets the list of message recipients (To, Cc, Bcc).
+            </summary>
+        </member>
+        <member name="M:PstToolkit.PstMessage.AddRecipient(System.String,System.String,PstToolkit.PstMessage.RecipientType)">
+            <summary>
+            Adds a recipient to this message.
+            </summary>
+            <param name="displayName">The display name of the recipient.</param>
+            <param name="emailAddress">The email address of the recipient.</param>
+            <param name="type">The recipient type (To, Cc, Bcc).</param>
+            <returns>The newly added recipient.</returns>
+        </member>
+        <member name="M:PstToolkit.PstMessage.RemoveRecipient(System.String)">
+            <summary>
+            Removes a recipient from this message.
+            </summary>
+            <param name="emailAddress">The email address of the recipient to remove.</param>
+            <returns>True if the recipient was removed, false if not found.</returns>
         </member>
         <member name="T:PstToolkit.Utils.BTreeOnHeap">
             <summary>
@@ -592,6 +743,12 @@
             <param name="nodeId">The node ID to find.</param>
             <returns>The node entry if found, or null if not found.</returns>
         </member>
+        <member name="M:PstToolkit.Utils.BTreeOnHeap.GetAllNodes">
+            <summary>
+            Gets all nodes in the B-tree.
+            </summary>
+            <returns>A list of all node entries.</returns>
+        </member>
         <member name="M:PstToolkit.Utils.BTreeOnHeap.CreateNew(PstToolkit.PstFile,System.UInt32)">
             <summary>
             Creates a new B-tree with a root node.
@@ -599,6 +756,23 @@
             <param name="pstFile">The PST file.</param>
             <param name="rootNodeId">The root node ID of the B-tree.</param>
             <returns>A new BTreeOnHeap instance.</returns>
+        </member>
+        <member name="M:PstToolkit.Utils.BTreeOnHeap.AddNode(System.UInt32,System.UInt32,System.UInt32,System.Byte[])">
+            <summary>
+            Adds a new node to the B-tree.
+            </summary>
+            <param name="nodeId">The node ID to add.</param>
+            <param name="dataId">The data ID for the node.</param>
+            <param name="parentId">The parent node ID.</param>
+            <param name="data">The data to store in the node.</param>
+            <returns>The new node entry.</returns>
+        </member>
+        <member name="M:PstToolkit.Utils.BTreeOnHeap.RemoveNode(System.UInt32)">
+            <summary>
+            Removes a node from the B-tree.
+            </summary>
+            <param name="nodeId">The node ID to remove.</param>
+            <returns>True if the node was removed, false if it wasn't found.</returns>
         </member>
         <member name="T:PstToolkit.Utils.NdbNodeEntry">
             <summary>
@@ -716,6 +890,27 @@
             </summary>
             <param name="propertyId">The property ID.</param>
             <returns>The binary value as a byte array if found, or null if not found.</returns>
+        </member>
+        <member name="M:PstToolkit.Utils.PropertyContext.SetProperty(System.UInt16,PstToolkit.Utils.PstStructure.PropertyType,System.Object)">
+            <summary>
+            Sets a property value.
+            </summary>
+            <param name="propertyId">The property ID.</param>
+            <param name="propertyType">The property type.</param>
+            <param name="value">The property value.</param>
+        </member>
+        <member name="M:PstToolkit.Utils.PropertyContext.DeleteProperty(System.UInt16,PstToolkit.Utils.PstStructure.PropertyType)">
+            <summary>
+            Deletes a property.
+            </summary>
+            <param name="propertyId">The property ID.</param>
+            <param name="propertyType">The property type.</param>
+            <returns>True if the property was deleted, false if it wasn't found.</returns>
+        </member>
+        <member name="M:PstToolkit.Utils.PropertyContext.Save">
+            <summary>
+            Saves any modified properties back to the PST file.
+            </summary>
         </member>
         <member name="T:PstToolkit.Utils.PstBinaryReader">
             <summary>

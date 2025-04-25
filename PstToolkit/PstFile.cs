@@ -12,10 +12,10 @@ namespace PstToolkit
     /// </summary>
     public class PstFile : IDisposable
     {
-        private FileStream _fileStream;
+        private FileStream? _fileStream;
         private bool _isReadOnly;
-        private PstFormatHeader _header;
-        private Dictionary<uint, PstFolder> _folderCache;
+        private PstFormatHeader? _header;
+        private Dictionary<uint, PstFolder>? _folderCache;
         private BTreeOnHeap? _nodeBTree;
         private BTreeOnHeap? _blockBTree;
         private PstFolder? _rootFolder;
@@ -39,17 +39,17 @@ namespace PstToolkit
         /// <summary>
         /// Gets whether the PST file is in ANSI format (as opposed to Unicode).
         /// </summary>
-        public bool IsAnsi => _header.IsAnsi;
+        public bool IsAnsi => _header?.IsAnsi ?? false;
 
         /// <summary>
         /// Gets the format type of the PST file.
         /// </summary>
-        public PstFormatType FormatType => _header.FormatType;
+        public PstFormatType FormatType => _header?.FormatType ?? PstFormatType.Unicode;
 
         /// <summary>
         /// Gets the file path of the PST file.
         /// </summary>
-        public string FilePath { get; private set; }
+        public string FilePath { get; private set; } = string.Empty;
 
         /// <summary>
         /// Gets whether the PST file is open in read-only mode.
@@ -172,7 +172,7 @@ namespace PstToolkit
         {
             if (!_isReadOnly)
             {
-                _fileStream.Flush();
+                _fileStream?.Flush();
             }
         }
 
@@ -185,6 +185,10 @@ namespace PstToolkit
             GC.SuppressFinalize(this);
         }
 
+        /// <summary>
+        /// Releases the unmanaged resources used by the PstFile and optionally releases the managed resources.
+        /// </summary>
+        /// <param name="disposing">true to release both managed and unmanaged resources; false to release only unmanaged resources.</param>
         protected virtual void Dispose(bool disposing)
         {
             if (!_disposed)
@@ -200,6 +204,9 @@ namespace PstToolkit
 
         private void Initialize()
         {
+            if (_fileStream == null)
+                throw new PstCorruptedException("File stream is not initialized");
+                
             using var reader = new PstBinaryReader(_fileStream, leaveOpen: true);
             
             // Read and validate the PST file header
@@ -216,6 +223,9 @@ namespace PstToolkit
 
         private void InitializeBTrees()
         {
+            if (_header == null)
+                throw new PstCorruptedException("PST header is not initialized");
+                
             // Load the node B-tree (NBT)
             _nodeBTree = new BTreeOnHeap(this, _header.NodeBTreeRoot);
             
@@ -225,6 +235,9 @@ namespace PstToolkit
 
         private void InitializeRootFolder()
         {
+            if (_header == null)
+                throw new PstCorruptedException("PST header is not initialized");
+                
             // Find the root folder node
             var rootEntry = _nodeBTree!.FindNodeByNid(_header.RootFolderId);
             if (rootEntry == null)
@@ -233,6 +246,10 @@ namespace PstToolkit
             }
 
             _rootFolder = new PstFolder(this, rootEntry);
+            if (_folderCache == null)
+            {
+                _folderCache = new Dictionary<uint, PstFolder>();
+            }
             _folderCache[_header.RootFolderId] = _rootFolder;
         }
 
@@ -241,6 +258,9 @@ namespace PstToolkit
             // Initialize a new PST header
             _header = PstFormatHeader.CreateNew(formatType);
             
+            if (_fileStream == null)
+                throw new PstCorruptedException("File stream is not initialized");
+                
             using var writer = new PstBinaryWriter(_fileStream, leaveOpen: true);
             
             // Write the initial PST file structure
@@ -259,6 +279,9 @@ namespace PstToolkit
             // including node and block B-trees, and the necessary tables
             // This is a complex process that involves creating various metadata structures
             
+            if (_header == null)
+                throw new PstCorruptedException("PST header is not initialized");
+                
             // For now, we'll just create placeholder structures
             _nodeBTree = BTreeOnHeap.CreateNew(this, _header.NodeBTreeRoot);
             _blockBTree = BTreeOnHeap.CreateNew(this, _header.BlockBTreeRoot);
@@ -315,9 +338,22 @@ namespace PstToolkit
             
             return new PropertyContext(this, nodeEntry);
         }
+        
+        internal BTreeOnHeap GetNodeBTree()
+        {
+            if (_nodeBTree == null)
+            {
+                throw new PstCorruptedException("Node B-tree is not initialized");
+            }
+            
+            return _nodeBTree;
+        }
 
         internal byte[] ReadBlock(ulong offset, uint size)
         {
+            if (_fileStream == null)
+                throw new PstCorruptedException("File stream is not initialized");
+                
             _fileStream.Position = (long)offset;
             var buffer = new byte[size];
             _fileStream.Read(buffer, 0, (int)size);
@@ -329,17 +365,30 @@ namespace PstToolkit
             if (_isReadOnly)
                 throw new PstAccessException("Cannot write to a read-only PST file");
                 
+            if (_fileStream == null)
+                throw new PstCorruptedException("File stream is not initialized");
+                
             _fileStream.Position = (long)offset;
             _fileStream.Write(data, 0, data.Length);
         }
 
         internal void RegisterFolder(uint folderId, PstFolder folder)
         {
+            if (_folderCache == null)
+            {
+                _folderCache = new Dictionary<uint, PstFolder>();
+            }
+            
             _folderCache[folderId] = folder;
         }
 
         internal PstFolder? GetCachedFolder(uint folderId)
         {
+            if (_folderCache == null)
+            {
+                return null;
+            }
+            
             return _folderCache.TryGetValue(folderId, out var folder) ? folder : null;
         }
     }
