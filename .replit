@@ -1,0 +1,41 @@
+modules = ["dotnet"]
+
+[nix]
+channel = "stable-24_05"
+packages = ["dotnet-sdk"]
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Build and Run PstToolkit"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "dotnet_run"
+
+[[workflows.workflow]]
+name = "Build and Run PstToolkit"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "dotnet run --project PstToolkitDemo/PstToolkitDemo.csproj"
+waitForPort = 5000
+
+[[workflows.workflow]]
+name = "dotnet_run"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd PstToolkitDemo && dotnet run"
+
+[deployment]
+run = ["sh", "-c", "dotnet run --project PstToolkitDemo/PstToolkitDemo.csproj"]

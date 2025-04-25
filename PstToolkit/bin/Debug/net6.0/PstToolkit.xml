@@ -1,0 +1,915 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>PstToolkit</name>
+    </assembly>
+    <members>
+        <member name="T:PstToolkit.Exceptions.PstAccessException">
+            <summary>
+            Exception thrown when there is an error accessing the PST file.
+            </summary>
+        </member>
+        <member name="M:PstToolkit.Exceptions.PstAccessException.#ctor">
+            <summary>
+            Initializes a new instance of the <see cref="T:PstToolkit.Exceptions.PstAccessException"/> class.
+            </summary>
+        </member>
+        <member name="M:PstToolkit.Exceptions.PstAccessException.#ctor(System.String)">
+            <summary>
+            Initializes a new instance of the <see cref="T:PstToolkit.Exceptions.PstAccessException"/> class with a specified error message.
+            </summary>
+            <param name="message">The message that describes the error.</param>
+        </member>
+        <member name="M:PstToolkit.Exceptions.PstAccessException.#ctor(System.String,System.Exception)">
+            <summary>
+            Initializes a new instance of the <see cref="T:PstToolkit.Exceptions.PstAccessException"/> class with a specified error message
+            and a reference to the inner exception that is the cause of this exception.
+            </summary>
+            <param name="message">The message that describes the error.</param>
+            <param name="innerException">The exception that is the cause of the current exception.</param>
+        </member>
+        <member name="T:PstToolkit.Exceptions.PstCorruptedException">
+            <summary>
+            Exception thrown when the PST file is found to be corrupted.
+            </summary>
+        </member>
+        <member name="M:PstToolkit.Exceptions.PstCorruptedException.#ctor">
+            <summary>
+            Initializes a new instance of the <see cref="T:PstToolkit.Exceptions.PstCorruptedException"/> class.
+            </summary>
+        </member>
+        <member name="M:PstToolkit.Exceptions.PstCorruptedException.#ctor(System.String)">
+            <summary>
+            Initializes a new instance of the <see cref="T:PstToolkit.Exceptions.PstCorruptedException"/> class with a specified error message.
+            </summary>
+            <param name="message">The message that describes the error.</param>
+        </member>
+        <member name="M:PstToolkit.Exceptions.PstCorruptedException.#ctor(System.String,System.Exception)">
+            <summary>
+            Initializes a new instance of the <see cref="T:PstToolkit.Exceptions.PstCorruptedException"/> class with a specified error message
+            and a reference to the inner exception that is the cause of this exception.
+            </summary>
+            <param name="message">The message that describes the error.</param>
+            <param name="innerException">The exception that is the cause of the current exception.</param>
+        </member>
+        <member name="T:PstToolkit.Exceptions.PstException">
+            <summary>
+            Base exception for all PST-related errors.
+            </summary>
+        </member>
+        <member name="M:PstToolkit.Exceptions.PstException.#ctor">
+            <summary>
+            Initializes a new instance of the <see cref="T:PstToolkit.Exceptions.PstException"/> class.
+            </summary>
+        </member>
+        <member name="M:PstToolkit.Exceptions.PstException.#ctor(System.String)">
+            <summary>
+            Initializes a new instance of the <see cref="T:PstToolkit.Exceptions.PstException"/> class with a specified error message.
+            </summary>
+            <param name="message">The message that describes the error.</param>
+        </member>
+        <member name="M:PstToolkit.Exceptions.PstException.#ctor(System.String,System.Exception)">
+            <summary>
+            Initializes a new instance of the <see cref="T:PstToolkit.Exceptions.PstException"/> class with a specified error message
+            and a reference to the inner exception that is the cause of this exception.
+            </summary>
+            <param name="message">The message that describes the error.</param>
+            <param name="innerException">The exception that is the cause of the current exception.</param>
+        </member>
+        <member name="T:PstToolkit.Formats.PstFormatType">
+            <summary>
+            PST file format types.
+            </summary>
+        </member>
+        <member name="F:PstToolkit.Formats.PstFormatType.Ansi">
+            <summary>ANSI PST file format (97-2002)</summary>
+        </member>
+        <member name="F:PstToolkit.Formats.PstFormatType.Unicode">
+            <summary>Unicode PST file format (2003+)</summary>
+        </member>
+        <member name="T:PstToolkit.Formats.PstFormatHeader">
+            <summary>
+            Represents the header of a PST file that contains format information.
+            </summary>
+        </member>
+        <member name="P:PstToolkit.Formats.PstFormatHeader.Signature">
+            <summary>
+            Gets the PST file signature.
+            </summary>
+        </member>
+        <member name="P:PstToolkit.Formats.PstFormatHeader.FormatType">
+            <summary>
+            Gets the PST file format type (ANSI or Unicode).
+            </summary>
+        </member>
+        <member name="P:PstToolkit.Formats.PstFormatHeader.IsAnsi">
+            <summary>
+            Gets whether the PST file is in ANSI format.
+            </summary>
+        </member>
+        <member name="P:PstToolkit.Formats.PstFormatHeader.MajorVersion">
+            <summary>
+            Gets the PST file format major version.
+            </summary>
+        </member>
+        <member name="P:PstToolkit.Formats.PstFormatHeader.MinorVersion">
+            <summary>
+            Gets the PST file format minor version.
+            </summary>
+        </member>
+        <member name="P:PstToolkit.Formats.PstFormatHeader.NodeBTreeRoot">
+            <summary>
+            Gets the root node ID of the node B-tree.
+            </summary>
+        </member>
+        <member name="P:PstToolkit.Formats.PstFormatHeader.BlockBTreeRoot">
+            <summary>
+            Gets the root node ID of the block B-tree.
+            </summary>
+        </member>
+        <member name="P:PstToolkit.Formats.PstFormatHeader.RootFolderId">
+            <summary>
+            Gets the ID of the root folder.
+            </summary>
+        </member>
+        <member name="P:PstToolkit.Formats.PstFormatHeader.IsValid">
+            <summary>
+            Gets whether the PST header is valid.
+            </summary>
+        </member>
+        <member name="M:PstToolkit.Formats.PstFormatHeader.Read(PstToolkit.Utils.PstBinaryReader)">
+            <summary>
+            Reads the PST file header from the given reader.
+            </summary>
+            <param name="reader">The binary reader to read from.</param>
+            <returns>A PstFormatHeader object containing the header information.</returns>
+        </member>
+        <member name="M:PstToolkit.Formats.PstFormatHeader.CreateNew(PstToolkit.Formats.PstFormatType)">
+            <summary>
+            Creates a new PST file header with the specified format type.
+            </summary>
+            <param name="formatType">The PST format type to create.</param>
+            <returns>A PstFormatHeader object containing the header information.</returns>
+        </member>
+        <member name="M:PstToolkit.Formats.PstFormatHeader.Write(PstToolkit.Utils.PstBinaryWriter)">
+            <summary>
+            Writes the PST file header to the given writer.
+            </summary>
+            <param name="writer">The binary writer to write to.</param>
+        </member>
+        <member name="T:PstToolkit.Formats.PstNodeTypes">
+            <summary>
+            Contains constants for PST node types used in the Node Database (NDB) layer.
+            </summary>
+        </member>
+        <member name="F:PstToolkit.Formats.PstNodeTypes.NID_TYPE_INTERNAL">
+            <summary>
+            Node type for the internal NDB structure.
+            </summary>
+        </member>
+        <member name="F:PstToolkit.Formats.PstNodeTypes.NID_TYPE_FOLDER">
+            <summary>
+            Node type for a normal folder.
+            </summary>
+        </member>
+        <member name="F:PstToolkit.Formats.PstNodeTypes.NID_TYPE_SEARCH_FOLDER">
+            <summary>
+            Node type for search folder contents.
+            </summary>
+        </member>
+        <member name="F:PstToolkit.Formats.PstNodeTypes.NID_TYPE_MESSAGE_STORE">
+            <summary>
+            Node type for the message store.
+            </summary>
+        </member>
+        <member name="F:PstToolkit.Formats.PstNodeTypes.NID_TYPE_MESSAGE">
+            <summary>
+            Node type for a normal message.
+            </summary>
+        </member>
+        <member name="F:PstToolkit.Formats.PstNodeTypes.NID_TYPE_ATTACHMENT">
+            <summary>
+            Node type for the attachment object.
+            </summary>
+        </member>
+        <member name="F:PstToolkit.Formats.PstNodeTypes.NID_TYPE_CONTENTS_TABLE">
+            <summary>
+            Node type for contents table of a folder.
+            </summary>
+        </member>
+        <member name="F:PstToolkit.Formats.PstNodeTypes.NID_TYPE_RECIPIENT_TABLE">
+            <summary>
+            Node type for the recipient table of a message.
+            </summary>
+        </member>
+        <member name="F:PstToolkit.Formats.PstNodeTypes.NID_TYPE_SEARCH_CRITERIA">
+            <summary>
+            Node type for the search criteria of a search folder.
+            </summary>
+        </member>
+        <member name="F:PstToolkit.Formats.PstNodeTypes.NID_TYPE_ATTACHMENT_TABLE">
+            <summary>
+            Node type for the attachment table of a message.
+            </summary>
+        </member>
+        <member name="F:PstToolkit.Formats.PstNodeTypes.NID_TYPE_HIERARCHY_TABLE">
+            <summary>
+            Node type for hierarchy table of a folder.
+            </summary>
+        </member>
+        <member name="F:PstToolkit.Formats.PstNodeTypes.NID_TYPE_CONTENTS">
+            <summary>
+            Node type for the message store contents.
+            </summary>
+        </member>
+        <member name="F:PstToolkit.Formats.PstNodeTypes.NID_TYPE_ASSOCIATED_CONTENTS">
+            <summary>
+            Node type for associated contents table of a folder.
+            </summary>
+        </member>
+        <member name="F:PstToolkit.Formats.PstNodeTypes.NID_TYPE_SEARCH_CONTENTS_TABLE">
+            <summary>
+            Node type for contents table of a search folder.
+            </summary>
+        </member>
+        <member name="M:PstToolkit.Formats.PstNodeTypes.GetNodeType(System.UInt32)">
+            <summary>
+            Extracts the node type from a node ID.
+            </summary>
+            <param name="nodeId">The node ID.</param>
+            <returns>The node type.</returns>
+        </member>
+        <member name="M:PstToolkit.Formats.PstNodeTypes.IsFolder(System.UInt32)">
+            <summary>
+            Determines if the given node ID represents a folder.
+            </summary>
+            <param name="nodeId">The node ID to check.</param>
+            <returns>True if the node ID represents a folder, false otherwise.</returns>
+        </member>
+        <member name="M:PstToolkit.Formats.PstNodeTypes.IsMessage(System.UInt32)">
+            <summary>
+            Determines if the given node ID represents a message.
+            </summary>
+            <param name="nodeId">The node ID to check.</param>
+            <returns>True if the node ID represents a message, false otherwise.</returns>
+        </member>
+        <member name="M:PstToolkit.Formats.PstNodeTypes.IsAttachment(System.UInt32)">
+            <summary>
+            Determines if the given node ID represents an attachment.
+            </summary>
+            <param name="nodeId">The node ID to check.</param>
+            <returns>True if the node ID represents an attachment, false otherwise.</returns>
+        </member>
+        <member name="M:PstToolkit.Formats.PstNodeTypes.CreateNodeId(System.UInt16,System.UInt16)">
+            <summary>
+            Creates a new node ID with the specified node type and ID.
+            </summary>
+            <param name="type">The node type.</param>
+            <param name="id">The node-specific ID.</param>
+            <returns>A new node ID.</returns>
+        </member>
+        <member name="T:PstToolkit.PstFile">
+            <summary>
+            Represents a PST file that can be read from or written to.
+            </summary>
+        </member>
+        <member name="P:PstToolkit.PstFile.RootFolder">
+            <summary>
+            Gets the root folder of the PST file.
+            </summary>
+        </member>
+        <member name="P:PstToolkit.PstFile.IsAnsi">
+            <summary>
+            Gets whether the PST file is in ANSI format (as opposed to Unicode).
+            </summary>
+        </member>
+        <member name="P:PstToolkit.PstFile.FormatType">
+            <summary>
+            Gets the format type of the PST file.
+            </summary>
+        </member>
+        <member name="P:PstToolkit.PstFile.FilePath">
+            <summary>
+            Gets the file path of the PST file.
+            </summary>
+        </member>
+        <member name="P:PstToolkit.PstFile.IsReadOnly">
+            <summary>
+            Gets whether the PST file is open in read-only mode.
+            </summary>
+        </member>
+        <member name="M:PstToolkit.PstFile.Open(System.String,System.Boolean)">
+            <summary>
+            Opens an existing PST file for reading or writing.
+            </summary>
+            <param name="filePath">Path to the PST file to open.</param>
+            <param name="readOnly">True to open in read-only mode, false for read-write.</param>
+            <returns>A PstFile object for the opened file.</returns>
+            <exception cref="T:PstToolkit.Exceptions.PstException">Thrown when the file cannot be opened or is not a valid PST file.</exception>
+        </member>
+        <member name="M:PstToolkit.PstFile.Create(System.String,PstToolkit.Formats.PstFormatType)">
+            <summary>
+            Creates a new PST file.
+            </summary>
+            <param name="filePath">Path where the new PST file should be created.</param>
+            <param name="formatType">The PST format type to create (Unicode is recommended).</param>
+            <returns>A PstFile object for the newly created file.</returns>
+            <exception cref="T:PstToolkit.Exceptions.PstException">Thrown when the file cannot be created.</exception>
+        </member>
+        <member name="M:PstToolkit.PstFile.CopyFrom(PstToolkit.PstFile,System.Action{System.Double})">
+            <summary>
+            Copies all folders and messages from the source PST file to this PST file.
+            </summary>
+            <param name="sourcePst">Source PST file to copy from.</param>
+            <param name="progressCallback">Optional callback to report progress (0.0 to 1.0)</param>
+            <exception cref="T:PstToolkit.Exceptions.PstException">Thrown when the copying operation fails.</exception>
+        </member>
+        <member name="M:PstToolkit.PstFile.Flush">
+            <summary>
+            Flushes any pending changes to disk.
+            </summary>
+        </member>
+        <member name="M:PstToolkit.PstFile.Dispose">
+            <summary>
+            Disposes the PST file, releasing resources.
+            </summary>
+        </member>
+        <member name="T:PstToolkit.PstFolder">
+            <summary>
+            Represents a folder in a PST file.
+            </summary>
+        </member>
+        <member name="P:PstToolkit.PstFolder.FolderId">
+            <summary>
+            Gets the unique identifier for this folder within the PST file.
+            </summary>
+        </member>
+        <member name="P:PstToolkit.PstFolder.Name">
+            <summary>
+            Gets or sets the name of the folder.
+            </summary>
+        </member>
+        <member name="P:PstToolkit.PstFolder.ParentFolder">
+            <summary>
+            Gets the parent folder, or null if this is a root folder.
+            </summary>
+        </member>
+        <member name="P:PstToolkit.PstFolder.SubFolderCount">
+            <summary>
+            Gets the subfolder count.
+            </summary>
+        </member>
+        <member name="P:PstToolkit.PstFolder.MessageCount">
+            <summary>
+            Gets the message count.
+            </summary>
+        </member>
+        <member name="P:PstToolkit.PstFolder.SubFolders">
+            <summary>
+            Gets the list of subfolders.
+            </summary>
+        </member>
+        <member name="P:PstToolkit.PstFolder.Messages">
+            <summary>
+            Gets the list of messages in this folder.
+            </summary>
+        </member>
+        <member name="P:PstToolkit.PstFolder.Type">
+            <summary>
+            Gets the folder type (e.g., Inbox, Sent Items, etc.).
+            </summary>
+        </member>
+        <member name="T:PstToolkit.PstFolder.FolderType">
+            <summary>
+            Enumeration of standard folder types.
+            </summary>
+        </member>
+        <member name="F:PstToolkit.PstFolder.FolderType.Normal">
+            <summary>Regular user-created folder</summary>
+        </member>
+        <member name="F:PstToolkit.PstFolder.FolderType.Root">
+            <summary>Root folder</summary>
+        </member>
+        <member name="F:PstToolkit.PstFolder.FolderType.Inbox">
+            <summary>Inbox folder</summary>
+        </member>
+        <member name="F:PstToolkit.PstFolder.FolderType.Outbox">
+            <summary>Outbox folder</summary>
+        </member>
+        <member name="F:PstToolkit.PstFolder.FolderType.SentItems">
+            <summary>Sent Items folder</summary>
+        </member>
+        <member name="F:PstToolkit.PstFolder.FolderType.DeletedItems">
+            <summary>Deleted Items folder</summary>
+        </member>
+        <member name="F:PstToolkit.PstFolder.FolderType.Calendar">
+            <summary>Calendar folder</summary>
+        </member>
+        <member name="F:PstToolkit.PstFolder.FolderType.Contacts">
+            <summary>Contacts folder</summary>
+        </member>
+        <member name="F:PstToolkit.PstFolder.FolderType.Drafts">
+            <summary>Drafts folder</summary>
+        </member>
+        <member name="F:PstToolkit.PstFolder.FolderType.Journal">
+            <summary>Journal folder</summary>
+        </member>
+        <member name="F:PstToolkit.PstFolder.FolderType.Notes">
+            <summary>Notes folder</summary>
+        </member>
+        <member name="F:PstToolkit.PstFolder.FolderType.Tasks">
+            <summary>Tasks folder</summary>
+        </member>
+        <member name="M:PstToolkit.PstFolder.CreateSubFolder(System.String)">
+            <summary>
+            Creates a subfolder with the specified name.
+            </summary>
+            <param name="folderName">The name of the new subfolder.</param>
+            <returns>The newly created subfolder.</returns>
+            <exception cref="T:PstToolkit.Exceptions.PstAccessException">Thrown if the PST file is read-only.</exception>
+        </member>
+        <member name="M:PstToolkit.PstFolder.FindFolder(System.String,System.Boolean)">
+            <summary>
+            Finds a subfolder by name.
+            </summary>
+            <param name="folderName">The name of the folder to find.</param>
+            <param name="recursive">Whether to search recursively through all subfolders.</param>
+            <returns>The found folder, or null if not found.</returns>
+        </member>
+        <member name="M:PstToolkit.PstFolder.AddMessage(PstToolkit.PstMessage)">
+            <summary>
+            Adds a message to this folder.
+            </summary>
+            <param name="message">The message to add.</param>
+            <exception cref="T:PstToolkit.Exceptions.PstAccessException">Thrown if the PST file is read-only.</exception>
+        </member>
+        <member name="M:PstToolkit.PstFolder.DeleteMessage(PstToolkit.PstMessage)">
+            <summary>
+            Deletes a message from this folder.
+            </summary>
+            <param name="message">The message to delete.</param>
+            <exception cref="T:PstToolkit.Exceptions.PstAccessException">Thrown if the PST file is read-only.</exception>
+        </member>
+        <member name="M:PstToolkit.PstFolder.Delete">
+            <summary>
+            Deletes this folder and all its contents.
+            </summary>
+            <exception cref="T:PstToolkit.Exceptions.PstAccessException">Thrown if the PST file is read-only or if the folder is the root folder.</exception>
+        </member>
+        <member name="T:PstToolkit.PstMessage">
+            <summary>
+            Represents an email message stored in a PST file.
+            </summary>
+        </member>
+        <member name="P:PstToolkit.PstMessage.MessageId">
+            <summary>
+            Gets the unique identifier for this message within the PST file.
+            </summary>
+        </member>
+        <member name="P:PstToolkit.PstMessage.Subject">
+            <summary>
+            Gets the subject of the email message.
+            </summary>
+        </member>
+        <member name="P:PstToolkit.PstMessage.SenderEmail">
+            <summary>
+            Gets the sender's email address.
+            </summary>
+        </member>
+        <member name="P:PstToolkit.PstMessage.SenderName">
+            <summary>
+            Gets the sender's display name.
+            </summary>
+        </member>
+        <member name="P:PstToolkit.PstMessage.Recipients">
+            <summary>
+            Gets the list of recipients' email addresses.
+            </summary>
+        </member>
+        <member name="P:PstToolkit.PstMessage.SentDate">
+            <summary>
+            Gets the date and time when the message was sent.
+            </summary>
+        </member>
+        <member name="P:PstToolkit.PstMessage.ReceivedDate">
+            <summary>
+            Gets the date and time when the message was received.
+            </summary>
+        </member>
+        <member name="P:PstToolkit.PstMessage.IsRead">
+            <summary>
+            Gets whether the message has been read.
+            </summary>
+        </member>
+        <member name="P:PstToolkit.PstMessage.HasAttachments">
+            <summary>
+            Gets whether the message has attachments.
+            </summary>
+        </member>
+        <member name="P:PstToolkit.PstMessage.Size">
+            <summary>
+            Gets the message size in bytes.
+            </summary>
+        </member>
+        <member name="P:PstToolkit.PstMessage.AttachmentNames">
+            <summary>
+            Gets the list of attachment filenames.
+            </summary>
+        </member>
+        <member name="P:PstToolkit.PstMessage.Importance">
+            <summary>
+            Gets the importance level of the message.
+            </summary>
+        </member>
+        <member name="P:PstToolkit.PstMessage.BodyText">
+            <summary>
+            Gets or sets the plain text body of the message.
+            </summary>
+        </member>
+        <member name="P:PstToolkit.PstMessage.BodyHtml">
+            <summary>
+            Gets or sets the HTML body of the message.
+            </summary>
+        </member>
+        <member name="T:PstToolkit.PstMessage.MessageImportance">
+            <summary>
+            Enumeration of message importance levels.
+            </summary>
+        </member>
+        <member name="F:PstToolkit.PstMessage.MessageImportance.Low">
+            <summary>Low importance</summary>
+        </member>
+        <member name="F:PstToolkit.PstMessage.MessageImportance.Normal">
+            <summary>Normal importance</summary>
+        </member>
+        <member name="F:PstToolkit.PstMessage.MessageImportance.High">
+            <summary>High importance</summary>
+        </member>
+        <member name="M:PstToolkit.PstMessage.Create(System.String,System.String,System.String,System.String)">
+            <summary>
+            Creates a new email message that can be added to a PST file.
+            </summary>
+            <param name="subject">The subject of the email.</param>
+            <param name="body">The body text of the email.</param>
+            <param name="senderEmail">The sender's email address.</param>
+            <param name="senderName">The sender's display name.</param>
+            <returns>A new PstMessage instance.</returns>
+        </member>
+        <member name="M:PstToolkit.PstMessage.ToMimeMessage">
+            <summary>
+            Gets the message as a MimeKit MimeMessage.
+            </summary>
+            <returns>A MimeMessage representation of this email.</returns>
+        </member>
+        <member name="M:PstToolkit.PstMessage.GetRawContent">
+            <summary>
+            Gets the raw content of the message.
+            </summary>
+            <returns>The raw message content as a byte array.</returns>
+        </member>
+        <member name="M:PstToolkit.PstMessage.GetAttachments">
+            <summary>
+            Gets the attachments of the message.
+            </summary>
+            <returns>A list of attachments as byte arrays with their filenames.</returns>
+        </member>
+        <member name="T:PstToolkit.Utils.BTreeOnHeap">
+            <summary>
+            Represents a B-tree structure on a heap in a PST file.
+            </summary>
+        </member>
+        <member name="M:PstToolkit.Utils.BTreeOnHeap.#ctor(PstToolkit.PstFile,System.UInt32)">
+            <summary>
+            Initializes a new instance of the <see cref="T:PstToolkit.Utils.BTreeOnHeap"/> class.
+            </summary>
+            <param name="pstFile">The PST file.</param>
+            <param name="rootNodeId">The root node ID of the B-tree.</param>
+        </member>
+        <member name="M:PstToolkit.Utils.BTreeOnHeap.FindNodeByNid(System.UInt32)">
+            <summary>
+            Finds a node in the B-tree by its node ID.
+            </summary>
+            <param name="nodeId">The node ID to find.</param>
+            <returns>The node entry if found, or null if not found.</returns>
+        </member>
+        <member name="M:PstToolkit.Utils.BTreeOnHeap.CreateNew(PstToolkit.PstFile,System.UInt32)">
+            <summary>
+            Creates a new B-tree with a root node.
+            </summary>
+            <param name="pstFile">The PST file.</param>
+            <param name="rootNodeId">The root node ID of the B-tree.</param>
+            <returns>A new BTreeOnHeap instance.</returns>
+        </member>
+        <member name="T:PstToolkit.Utils.NdbNodeEntry">
+            <summary>
+            Represents a node entry in the Node Database (NDB) layer of a PST file.
+            </summary>
+        </member>
+        <member name="P:PstToolkit.Utils.NdbNodeEntry.NodeId">
+            <summary>
+            Gets the node ID.
+            </summary>
+        </member>
+        <member name="P:PstToolkit.Utils.NdbNodeEntry.DataId">
+            <summary>
+            Gets the data ID.
+            </summary>
+        </member>
+        <member name="P:PstToolkit.Utils.NdbNodeEntry.ParentId">
+            <summary>
+            Gets the parent node ID.
+            </summary>
+        </member>
+        <member name="P:PstToolkit.Utils.NdbNodeEntry.NodeType">
+            <summary>
+            Gets the node type.
+            </summary>
+        </member>
+        <member name="P:PstToolkit.Utils.NdbNodeEntry.DataOffset">
+            <summary>
+            Gets the data offset in the file.
+            </summary>
+        </member>
+        <member name="P:PstToolkit.Utils.NdbNodeEntry.DataSize">
+            <summary>
+            Gets the data size in bytes.
+            </summary>
+        </member>
+        <member name="M:PstToolkit.Utils.NdbNodeEntry.#ctor(System.UInt32,System.UInt32,System.UInt32,System.UInt64,System.UInt32)">
+            <summary>
+            Initializes a new instance of the <see cref="T:PstToolkit.Utils.NdbNodeEntry"/> class.
+            </summary>
+            <param name="nodeId">The node ID.</param>
+            <param name="dataId">The data ID.</param>
+            <param name="parentId">The parent node ID.</param>
+            <param name="dataOffset">The data offset in the file.</param>
+            <param name="dataSize">The data size in bytes.</param>
+        </member>
+        <member name="M:PstToolkit.Utils.NdbNodeEntry.ReadData(PstToolkit.PstFile)">
+            <summary>
+            Reads node data from the PST file.
+            </summary>
+            <param name="pstFile">The PST file.</param>
+            <returns>The node data as a byte array.</returns>
+        </member>
+        <member name="M:PstToolkit.Utils.NdbNodeEntry.Create(System.UInt32,System.UInt32,System.UInt32,System.UInt64,System.UInt32)">
+            <summary>
+            Creates a new node entry from the given parameters.
+            </summary>
+            <param name="nodeId">The node ID.</param>
+            <param name="dataId">The data ID.</param>
+            <param name="parentId">The parent node ID.</param>
+            <param name="dataOffset">The data offset in the file.</param>
+            <param name="dataSize">The data size in bytes.</param>
+            <returns>A new NdbNodeEntry instance.</returns>
+        </member>
+        <member name="T:PstToolkit.Utils.PropertyContext">
+            <summary>
+            Provides access to properties stored in a PST node.
+            </summary>
+        </member>
+        <member name="M:PstToolkit.Utils.PropertyContext.#ctor(PstToolkit.PstFile,PstToolkit.Utils.NdbNodeEntry)">
+            <summary>
+            Initializes a new instance of the <see cref="T:PstToolkit.Utils.PropertyContext"/> class.
+            </summary>
+            <param name="pstFile">The PST file.</param>
+            <param name="nodeEntry">The node entry.</param>
+        </member>
+        <member name="M:PstToolkit.Utils.PropertyContext.GetString(System.UInt16)">
+            <summary>
+            Gets a string property.
+            </summary>
+            <param name="propertyId">The property ID.</param>
+            <returns>The string value if found, or null if not found.</returns>
+        </member>
+        <member name="M:PstToolkit.Utils.PropertyContext.GetInt32(System.UInt16)">
+            <summary>
+            Gets an integer property.
+            </summary>
+            <param name="propertyId">The property ID.</param>
+            <returns>The integer value if found, or null if not found.</returns>
+        </member>
+        <member name="M:PstToolkit.Utils.PropertyContext.GetInt64(System.UInt16)">
+            <summary>
+            Gets a long integer property.
+            </summary>
+            <param name="propertyId">The property ID.</param>
+            <returns>The long integer value if found, or null if not found.</returns>
+        </member>
+        <member name="M:PstToolkit.Utils.PropertyContext.GetDateTime(System.UInt16)">
+            <summary>
+            Gets a DateTime property.
+            </summary>
+            <param name="propertyId">The property ID.</param>
+            <returns>The DateTime value if found, or null if not found.</returns>
+        </member>
+        <member name="M:PstToolkit.Utils.PropertyContext.GetBoolean(System.UInt16)">
+            <summary>
+            Gets a boolean property.
+            </summary>
+            <param name="propertyId">The property ID.</param>
+            <returns>The boolean value if found, or null if not found.</returns>
+        </member>
+        <member name="M:PstToolkit.Utils.PropertyContext.GetBytes(System.UInt16)">
+            <summary>
+            Gets a binary property.
+            </summary>
+            <param name="propertyId">The property ID.</param>
+            <returns>The binary value as a byte array if found, or null if not found.</returns>
+        </member>
+        <member name="T:PstToolkit.Utils.PstBinaryReader">
+            <summary>
+            Binary reader with PST-specific functionality.
+            </summary>
+        </member>
+        <member name="M:PstToolkit.Utils.PstBinaryReader.#ctor(System.IO.Stream,System.Boolean)">
+            <summary>
+            Initializes a new instance of the <see cref="T:PstToolkit.Utils.PstBinaryReader"/> class.
+            </summary>
+            <param name="stream">The stream to read from.</param>
+            <param name="leaveOpen">Whether to leave the stream open when the reader is disposed.</param>
+        </member>
+        <member name="M:PstToolkit.Utils.PstBinaryReader.ReadString(System.Int32,System.Text.Encoding)">
+            <summary>
+            Reads a variable-length string from the current stream.
+            </summary>
+            <param name="length">The length of the string in bytes.</param>
+            <param name="encoding">The character encoding to use.</param>
+            <returns>The string that was read.</returns>
+        </member>
+        <member name="M:PstToolkit.Utils.PstBinaryReader.ReadNullTerminatedString(System.Text.Encoding)">
+            <summary>
+            Reads a null-terminated string from the current stream.
+            </summary>
+            <param name="encoding">The character encoding to use.</param>
+            <returns>The string that was read.</returns>
+        </member>
+        <member name="M:PstToolkit.Utils.PstBinaryReader.ReadGuid">
+            <summary>
+            Reads a GUID from the current stream.
+            </summary>
+            <returns>The GUID that was read.</returns>
+        </member>
+        <member name="M:PstToolkit.Utils.PstBinaryReader.ReadFileTime">
+            <summary>
+            Reads a 64-bit file time from the current stream.
+            </summary>
+            <returns>A DateTime representing the file time that was read.</returns>
+        </member>
+        <member name="M:PstToolkit.Utils.PstBinaryReader.ReadLengthPrefixedString(System.Text.Encoding)">
+            <summary>
+            Reads a length-prefixed string from the current stream.
+            </summary>
+            <param name="encoding">The character encoding to use.</param>
+            <returns>The string that was read.</returns>
+        </member>
+        <member name="M:PstToolkit.Utils.PstBinaryReader.ReadBytesAt(System.Int64,System.Int32)">
+            <summary>
+            Reads a specified number of bytes from the stream, starting at a specified position.
+            </summary>
+            <param name="position">The position in the stream to begin reading from.</param>
+            <param name="count">The number of bytes to read.</param>
+            <returns>A byte array containing the read bytes.</returns>
+        </member>
+        <member name="T:PstToolkit.Utils.PstBinaryWriter">
+            <summary>
+            Binary writer with PST-specific functionality.
+            </summary>
+        </member>
+        <member name="M:PstToolkit.Utils.PstBinaryWriter.#ctor(System.IO.Stream,System.Boolean)">
+            <summary>
+            Initializes a new instance of the <see cref="T:PstToolkit.Utils.PstBinaryWriter"/> class.
+            </summary>
+            <param name="stream">The stream to write to.</param>
+            <param name="leaveOpen">Whether to leave the stream open when the writer is disposed.</param>
+        </member>
+        <member name="M:PstToolkit.Utils.PstBinaryWriter.WriteString(System.String,System.Text.Encoding)">
+            <summary>
+            Writes a string to the current stream with the specified encoding.
+            </summary>
+            <param name="value">The string to write.</param>
+            <param name="encoding">The character encoding to use.</param>
+        </member>
+        <member name="M:PstToolkit.Utils.PstBinaryWriter.WriteNullTerminatedString(System.String,System.Text.Encoding)">
+            <summary>
+            Writes a null-terminated string to the current stream with the specified encoding.
+            </summary>
+            <param name="value">The string to write.</param>
+            <param name="encoding">The character encoding to use.</param>
+        </member>
+        <member name="M:PstToolkit.Utils.PstBinaryWriter.WriteGuid(System.Guid)">
+            <summary>
+            Writes a GUID to the current stream.
+            </summary>
+            <param name="value">The GUID to write.</param>
+        </member>
+        <member name="M:PstToolkit.Utils.PstBinaryWriter.WriteFileTime(System.DateTime)">
+            <summary>
+            Writes a DateTime as a 64-bit file time to the current stream.
+            </summary>
+            <param name="value">The DateTime to write.</param>
+        </member>
+        <member name="M:PstToolkit.Utils.PstBinaryWriter.WriteLengthPrefixedString(System.String,System.Text.Encoding)">
+            <summary>
+            Writes a length-prefixed string to the current stream.
+            </summary>
+            <param name="value">The string to write.</param>
+            <param name="encoding">The character encoding to use.</param>
+        </member>
+        <member name="M:PstToolkit.Utils.PstBinaryWriter.WriteBytesAt(System.Int64,System.Byte[])">
+            <summary>
+            Writes bytes to the stream at the specified position without changing the stream position.
+            </summary>
+            <param name="position">The position in the stream to write to.</param>
+            <param name="buffer">The bytes to write.</param>
+        </member>
+        <member name="T:PstToolkit.Utils.PstStructure">
+            <summary>
+            Constants and utilities related to the PST file structure.
+            </summary>
+        </member>
+        <member name="T:PstToolkit.Utils.PstStructure.PropertyIds">
+            <summary>
+            Property ID constants for common PST properties.
+            </summary>
+        </member>
+        <member name="T:PstToolkit.Utils.PstStructure.PropertyType">
+            <summary>
+            Property types used in PST property contexts.
+            </summary>
+        </member>
+        <member name="F:PstToolkit.Utils.PstStructure.PropertyType.PT_UNSPECIFIED">
+            <summary>No type</summary>
+        </member>
+        <member name="F:PstToolkit.Utils.PstStructure.PropertyType.PT_NULL">
+            <summary>Null value</summary>
+        </member>
+        <member name="F:PstToolkit.Utils.PstStructure.PropertyType.PT_SHORT">
+            <summary>2-byte integer</summary>
+        </member>
+        <member name="F:PstToolkit.Utils.PstStructure.PropertyType.PT_LONG">
+            <summary>4-byte integer</summary>
+        </member>
+        <member name="F:PstToolkit.Utils.PstStructure.PropertyType.PT_FLOAT">
+            <summary>4-byte floating point</summary>
+        </member>
+        <member name="F:PstToolkit.Utils.PstStructure.PropertyType.PT_DOUBLE">
+            <summary>8-byte floating point</summary>
+        </member>
+        <member name="F:PstToolkit.Utils.PstStructure.PropertyType.PT_CURRENCY">
+            <summary>Currency value</summary>
+        </member>
+        <member name="F:PstToolkit.Utils.PstStructure.PropertyType.PT_APPTIME">
+            <summary>Application time</summary>
+        </member>
+        <member name="F:PstToolkit.Utils.PstStructure.PropertyType.PT_ERROR">
+            <summary>4-byte error value</summary>
+        </member>
+        <member name="F:PstToolkit.Utils.PstStructure.PropertyType.PT_BOOLEAN">
+            <summary>1-byte boolean</summary>
+        </member>
+        <member name="F:PstToolkit.Utils.PstStructure.PropertyType.PT_OBJECT">
+            <summary>Object/embedded object</summary>
+        </member>
+        <member name="F:PstToolkit.Utils.PstStructure.PropertyType.PT_LONGLONG">
+            <summary>8-byte integer</summary>
+        </member>
+        <member name="F:PstToolkit.Utils.PstStructure.PropertyType.PT_STRING8">
+            <summary>String</summary>
+        </member>
+        <member name="F:PstToolkit.Utils.PstStructure.PropertyType.PT_UNICODE">
+            <summary>Unicode string</summary>
+        </member>
+        <member name="F:PstToolkit.Utils.PstStructure.PropertyType.PT_SYSTIME">
+            <summary>File time</summary>
+        </member>
+        <member name="F:PstToolkit.Utils.PstStructure.PropertyType.PT_CLSID">
+            <summary>GUID</summary>
+        </member>
+        <member name="F:PstToolkit.Utils.PstStructure.PropertyType.PT_BINARY">
+            <summary>Binary data</summary>
+        </member>
+        <member name="M:PstToolkit.Utils.PstStructure.MakePropertyId(System.UInt16,PstToolkit.Utils.PstStructure.PropertyType)">
+            <summary>
+            Creates a complete property ID by combining a property ID and type.
+            </summary>
+            <param name="id">The property ID.</param>
+            <param name="type">The property type.</param>
+            <returns>The complete property ID.</returns>
+        </member>
+        <member name="M:PstToolkit.Utils.PstStructure.GetPropertyId(System.UInt32)">
+            <summary>
+            Extracts the property ID from a complete property ID.
+            </summary>
+            <param name="propertyId">The complete property ID.</param>
+            <returns>The property ID.</returns>
+        </member>
+        <member name="M:PstToolkit.Utils.PstStructure.GetPropertyType(System.UInt32)">
+            <summary>
+            Extracts the property type from a complete property ID.
+            </summary>
+            <param name="propertyId">The complete property ID.</param>
+            <returns>The property type.</returns>
+        </member>
+    </members>
+</doc>
