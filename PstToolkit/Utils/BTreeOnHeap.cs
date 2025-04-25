@@ -46,10 +46,105 @@ namespace PstToolkit.Utils
             _isAnsi = _pstFile.IsAnsi;
             _nodeCache = new Dictionary<uint, NdbNodeEntry>();
             
+            // Load any previously saved nodes from the file
+            LoadNodesFromFile();
+            
             // Initialize the B-tree by loading the root node
             LoadBTreeRoot();
         }
-
+        
+        private void LoadNodesFromFile()
+        {
+            // This is where we'd normally read the B-tree structure from the PST file
+            // For this demo, we'll try to read a persisted node cache if it exists
+            string nodeDataFile = _pstFile.FilePath + ".nodes";
+            if (File.Exists(nodeDataFile))
+            {
+                try
+                {
+                    // Load serialized node data
+                    string[] lines = File.ReadAllLines(nodeDataFile);
+                    foreach (string line in lines)
+                    {
+                        string[] parts = line.Split(',');
+                        if (parts.Length >= 5)
+                        {
+                            uint nodeId = uint.Parse(parts[0]);
+                            uint dataId = uint.Parse(parts[1]);
+                            uint parentId = uint.Parse(parts[2]);
+                            ulong dataOffset = ulong.Parse(parts[3]);
+                            uint dataSize = uint.Parse(parts[4]);
+                            
+                            var node = new NdbNodeEntry(nodeId, dataId, parentId, dataOffset, dataSize);
+                            
+                            // Check for optional display name
+                            if (parts.Length >= 6 && !string.IsNullOrEmpty(parts[5]))
+                            {
+                                node.DisplayName = parts[5];
+                            }
+                            
+                            // Check for additional metadata (key=value pairs)
+                            if (parts.Length >= 7)
+                            {
+                                for (int i = 6; i < parts.Length; i++)
+                                {
+                                    string[] kvp = parts[i].Split('=');
+                                    if (kvp.Length == 2)
+                                    {
+                                        var key = kvp[0];
+                                        var value = kvp[1];
+                                        
+                                        // Handle special message-specific properties
+                                        switch (key)
+                                        {
+                                            case "SUBJECT":
+                                                node.Subject = value;
+                                                break;
+                                            case "SENDER_NAME":
+                                                node.SenderName = value;
+                                                break;
+                                            case "SENDER_EMAIL":
+                                                node.SenderEmail = value;
+                                                break;
+                                            case "SENT_DATE":
+                                                if (!string.IsNullOrEmpty(value))
+                                                {
+                                                    try 
+                                                    {
+                                                        node.SentDate = DateTime.Parse(value);
+                                                    }
+                                                    catch
+                                                    {
+                                                        // Ignore date parsing errors
+                                                    }
+                                                }
+                                                break;
+                                            default:
+                                                // For all other metadata
+                                                node.SetMetadata(key, value);
+                                                break;
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            _nodeCache[nodeId] = node;
+                            
+                            Console.WriteLine($"Loaded node {nodeId} with parent {parentId}" + 
+                                (string.IsNullOrEmpty(node.DisplayName) ? "" : $", name: {node.DisplayName}") + 
+                                " from file");
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error loading node cache: {ex.Message}");
+                    // If there's an error, we'll just start with an empty cache
+                    _nodeCache.Clear();
+                }
+            }
+        }
+        
         /// <summary>
         /// Finds a node in the B-tree by its node ID.
         /// </summary>
@@ -93,11 +188,19 @@ namespace PstToolkit.Utils
             // For now, we'll just return the nodes we have in cache plus any special system nodes
             var allNodes = new List<NdbNodeEntry>(_nodeCache.Values);
             
+            Console.WriteLine($"GetAllNodes: Found {_nodeCache.Count} nodes in cache");
+            
+            foreach (var key in _nodeCache.Keys)
+            {
+                Console.WriteLine($"  - Node ID: {key}, Parent ID: {_nodeCache[key].ParentId}");
+            }
+            
             // Add well-known system nodes that might not be in the cache
             uint rootFolderId = _isAnsi ? 0x21u : 0x42u;
             var rootFolder = FindNodeByNid(rootFolderId);
             if (rootFolder != null && !_nodeCache.ContainsKey(rootFolderId))
             {
+                Console.WriteLine($"Adding root folder node {rootFolderId} to results");
                 allNodes.Add(rootFolder);
             }
             
@@ -214,10 +317,43 @@ namespace PstToolkit.Utils
         /// <returns>The new node entry.</returns>
         public NdbNodeEntry AddNode(uint nodeId, uint dataId, uint parentId, byte[] data)
         {
+            return AddNode(nodeId, dataId, parentId, data, null);
+        }
+        
+        /// <summary>
+        /// Adds an existing node entry to the B-tree.
+        /// </summary>
+        /// <param name="node">The node entry to add.</param>
+        /// <param name="data">The data to store in the node.</param>
+        /// <returns>The node entry that was added.</returns>
+        public NdbNodeEntry AddNode(NdbNodeEntry node, byte[] data)
+        {
             if (_pstFile.IsReadOnly)
             {
                 throw new PstAccessException("Cannot add a node to a read-only PST file.");
             }
+            
+            return AddNode(node.NodeId, node.DataId, node.ParentId, data, node.DisplayName);
+        }
+        
+        /// <summary>
+        /// Adds a new node to the B-tree with a display name.
+        /// </summary>
+        /// <param name="nodeId">The node ID to add.</param>
+        /// <param name="dataId">The data ID for the node.</param>
+        /// <param name="parentId">The parent node ID.</param>
+        /// <param name="data">The data to store in the node.</param>
+        /// <param name="displayName">The display name for the node (for folders).</param>
+        /// <returns>The new node entry.</returns>
+        public NdbNodeEntry AddNode(uint nodeId, uint dataId, uint parentId, byte[] data, string? displayName)
+        {
+            if (_pstFile.IsReadOnly)
+            {
+                throw new PstAccessException("Cannot add a node to a read-only PST file.");
+            }
+            
+            Console.WriteLine($"AddNode: Adding node {nodeId} with parent {parentId}" +
+                (displayName != null ? $", name: {displayName}" : ""));
             
             try
             {
@@ -231,8 +367,18 @@ namespace PstToolkit.Utils
                 ulong dataOffset = 2048ul; // This would be a real allocation in a full implementation
                 var nodeEntry = new NdbNodeEntry(nodeId, dataId, parentId, dataOffset, (uint)data.Length);
                 
+                // Set the display name if provided
+                if (!string.IsNullOrEmpty(displayName))
+                {
+                    nodeEntry.DisplayName = displayName;
+                }
+                
                 // Add to cache
+                Console.WriteLine($"AddNode: Adding node to cache with ID: {nodeId}, parent: {parentId}");
                 _nodeCache[nodeId] = nodeEntry;
+                
+                // For demo purposes, save nodes to a file so they persist between runs
+                SaveNodesToFile();
                 
                 return nodeEntry;
             }
@@ -265,11 +411,66 @@ namespace PstToolkit.Utils
                 // For demonstration, we'll just remove it from the cache
                 bool wasInCache = _nodeCache.Remove(nodeId);
                 
+                // Save the updated cache
+                SaveNodesToFile();
+                
                 return wasInCache; // This would be a real result in a full implementation
             }
             catch (Exception ex)
             {
                 throw new PstException($"Failed to remove node {nodeId} from B-tree", ex);
+            }
+        }
+        
+        private void SaveNodesToFile()
+        {
+            if (_pstFile.IsReadOnly)
+            {
+                return; // Don't try to save for read-only files
+            }
+            
+            try
+            {
+                string nodeDataFile = _pstFile.FilePath + ".nodes";
+                
+                // We'll save the node data in a simple CSV-like format with metadata
+                using (var writer = new StreamWriter(nodeDataFile, false))
+                {
+                    foreach (var node in _nodeCache.Values)
+                    {
+                        // Format the basic node information
+                        string line = $"{node.NodeId},{node.DataId},{node.ParentId},{node.DataOffset},{node.DataSize}";
+                        
+                        // Add display name if it exists
+                        line += $",{node.DisplayName ?? ""}";
+                        
+                        // For nodes that are folders, we just need the display name
+                        // For message nodes, we add additional metadata
+                        if (node.NodeType == PstNodeTypes.NID_TYPE_MESSAGE)
+                        {
+                            // Add message-specific properties
+                            line += $",SUBJECT={node.Subject ?? ""}";
+                            line += $",SENDER_NAME={node.SenderName ?? ""}";
+                            line += $",SENDER_EMAIL={node.SenderEmail ?? ""}";
+                            line += $",SENT_DATE={node.SentDate?.ToString("o") ?? ""}";
+                        }
+                        
+                        // Add general metadata key-value pairs 
+                        foreach (var kvp in node.Metadata)
+                        {
+                            line += $",{kvp.Key}={kvp.Value}";
+                        }
+                        
+                        writer.WriteLine(line);
+                    }
+                }
+                
+                Console.WriteLine($"Saved {_nodeCache.Count} nodes to file {nodeDataFile}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error saving node cache: {ex.Message}");
+                // We'll continue even if there's an error saving the cache
             }
         }
     }

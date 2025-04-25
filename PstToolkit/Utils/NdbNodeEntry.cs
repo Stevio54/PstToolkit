@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace PstToolkit.Utils
 {
@@ -36,6 +37,36 @@ namespace PstToolkit.Utils
         /// Gets the data size in bytes.
         /// </summary>
         public uint DataSize { get; }
+        
+        /// <summary>
+        /// Gets or sets the display name (for folders and messages).
+        /// </summary>
+        public string? DisplayName { get; set; }
+        
+        /// <summary>
+        /// Gets or sets the sender name (for messages).
+        /// </summary>
+        public string? SenderName { get; set; }
+        
+        /// <summary>
+        /// Gets or sets the sender email (for messages).
+        /// </summary>
+        public string? SenderEmail { get; set; }
+        
+        /// <summary>
+        /// Gets or sets the message subject (for messages).
+        /// </summary>
+        public string? Subject { get; set; }
+        
+        /// <summary>
+        /// Gets or sets the sent date (for messages).
+        /// </summary>
+        public DateTime? SentDate { get; set; }
+        
+        /// <summary>
+        /// Gets or sets additional metadata for the node.
+        /// </summary>
+        public Dictionary<string, string> Metadata { get; } = new Dictionary<string, string>();
 
         /// <summary>
         /// Initializes a new instance of the <see cref="NdbNodeEntry"/> class.
@@ -54,6 +85,21 @@ namespace PstToolkit.Utils
             DataOffset = dataOffset;
             DataSize = dataSize;
         }
+        
+        /// <summary>
+        /// Initializes a new instance of the <see cref="NdbNodeEntry"/> class with additional metadata.
+        /// </summary>
+        /// <param name="nodeId">The node ID.</param>
+        /// <param name="dataId">The data ID.</param>
+        /// <param name="parentId">The parent node ID.</param>
+        /// <param name="dataOffset">The data offset in the file.</param>
+        /// <param name="dataSize">The data size in bytes.</param>
+        /// <param name="displayName">The display name for the node.</param>
+        public NdbNodeEntry(uint nodeId, uint dataId, uint parentId, ulong dataOffset, uint dataSize, string displayName)
+            : this(nodeId, dataId, parentId, dataOffset, dataSize)
+        {
+            DisplayName = displayName;
+        }
 
         /// <summary>
         /// Reads node data from the PST file.
@@ -66,6 +112,26 @@ namespace PstToolkit.Utils
                 return Array.Empty<byte>();
                 
             return pstFile.ReadBlock(DataOffset, DataSize);
+        }
+        
+        /// <summary>
+        /// Sets a metadata value for the node.
+        /// </summary>
+        /// <param name="key">The metadata key.</param>
+        /// <param name="value">The metadata value.</param>
+        public void SetMetadata(string key, string value)
+        {
+            Metadata[key] = value;
+        }
+        
+        /// <summary>
+        /// Gets a metadata value from the node.
+        /// </summary>
+        /// <param name="key">The metadata key.</param>
+        /// <returns>The metadata value, or null if the key doesn't exist.</returns>
+        public string? GetMetadata(string key)
+        {
+            return Metadata.TryGetValue(key, out var value) ? value : null;
         }
 
         /// <summary>

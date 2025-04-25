@@ -126,8 +126,14 @@ namespace PstToolkit
             BodyText = "";
             BodyHtml = "";
 
-            // Load the message properties
-            LoadProperties();
+            // First try to initialize properties from the node metadata (for messages loaded from cache)
+            InitializeFromNodeMetadata();
+            
+            // Then try to load from property context (for newly created/opened messages)
+            if (string.IsNullOrEmpty(Subject) && string.IsNullOrEmpty(SenderName))
+            {
+                LoadProperties();
+            }
         }
 
         /// <summary>
@@ -673,6 +679,75 @@ namespace PstToolkit
             catch (Exception ex)
             {
                 throw new PstCorruptedException("Error loading message properties", ex);
+            }
+        }
+        
+        private void InitializeFromNodeMetadata()
+        {
+            try
+            {
+                // Check if the node already has properties set from the node cache
+                if (_nodeEntry.Subject != null)
+                {
+                    Subject = _nodeEntry.Subject;
+                }
+                
+                if (_nodeEntry.SenderName != null)
+                {
+                    SenderName = _nodeEntry.SenderName;
+                }
+                
+                if (_nodeEntry.SenderEmail != null)
+                {
+                    SenderEmail = _nodeEntry.SenderEmail;
+                }
+                
+                if (_nodeEntry.SentDate.HasValue)
+                {
+                    SentDate = _nodeEntry.SentDate.Value;
+                    // If no ReceivedDate is stored, assume it's the same as SentDate
+                    ReceivedDate = _nodeEntry.SentDate.Value;
+                }
+                
+                // Check for other metadata stored in key-value pairs
+                if (_nodeEntry.Metadata.TryGetValue("BODY_TEXT", out var bodyText))
+                {
+                    BodyText = bodyText;
+                }
+                
+                if (_nodeEntry.Metadata.TryGetValue("BODY_HTML", out var bodyHtml))
+                {
+                    BodyHtml = bodyHtml;
+                }
+                
+                if (_nodeEntry.Metadata.TryGetValue("IS_READ", out var isReadStr) && 
+                    bool.TryParse(isReadStr, out var isRead))
+                {
+                    IsRead = isRead;
+                }
+                
+                if (_nodeEntry.Metadata.TryGetValue("HAS_ATTACHMENTS", out var hasAttachmentsStr) && 
+                    bool.TryParse(hasAttachmentsStr, out var hasAttachments))
+                {
+                    HasAttachments = hasAttachments;
+                }
+                
+                if (_nodeEntry.Metadata.TryGetValue("IMPORTANCE", out var importanceStr) && 
+                    int.TryParse(importanceStr, out var importance))
+                {
+                    Importance = (MessageImportance)importance;
+                }
+                
+                // Set display name as subject if subject is null
+                if (_nodeEntry.DisplayName != null && string.IsNullOrEmpty(Subject))
+                {
+                    Subject = _nodeEntry.DisplayName;
+                }
+            }
+            catch
+            {
+                // Ignore exceptions during initialization from metadata
+                // We'll fall back to LoadProperties() to get the data from propertyContext
             }
         }
 

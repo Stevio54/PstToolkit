@@ -192,10 +192,13 @@ namespace PstToolkit
                 // Create a new node entry for the folder
                 byte[] folderData = SerializeFolderProperties(properties);
                 var bTree = _pstFile.GetNodeBTree();
-                var nodeEntry = bTree.AddNode(newFolderId, 0, FolderId, folderData);
+                var nodeEntry = bTree.AddNode(newFolderId, 0, FolderId, folderData, folderName);
                 
                 // Create a new folder object
                 var newFolder = new PstFolder(_pstFile, nodeEntry, this);
+                
+                // Set the folder name and properties
+                newFolder.Name = folderName;
                 
                 // Update the hierarchy table to include the new folder
                 UpdateHierarchyTable(newFolder);
@@ -271,9 +274,30 @@ namespace PstToolkit
                 // Generate a new node ID for the message
                 uint newMessageId = GenerateNewMessageId();
                 
-                // Add the message to the PST file
+                // Prepare the node with message metadata
                 var bTree = _pstFile.GetNodeBTree();
-                var messageNode = bTree.AddNode(newMessageId, 0, FolderId, messageData);
+                var messageNode = new NdbNodeEntry(newMessageId, 0, FolderId, 0, (uint)messageData.Length);
+                
+                // Set message metadata for persistence
+                messageNode.Subject = message.Subject;
+                messageNode.SenderName = message.SenderName;
+                messageNode.SenderEmail = message.SenderEmail;
+                messageNode.SentDate = message.SentDate;
+                messageNode.DisplayName = message.Subject; // Use subject as display name for messages
+                
+                // Store additional metadata
+                messageNode.SetMetadata("BODY_TEXT", message.BodyText ?? "");
+                messageNode.SetMetadata("IS_READ", message.IsRead.ToString());
+                messageNode.SetMetadata("HAS_ATTACHMENTS", message.HasAttachments.ToString());
+                messageNode.SetMetadata("IMPORTANCE", ((int)message.Importance).ToString());
+                
+                if (!string.IsNullOrEmpty(message.BodyHtml))
+                {
+                    messageNode.SetMetadata("BODY_HTML", message.BodyHtml);
+                }
+                
+                // Add the node to the PST file with all metadata
+                bTree.AddNode(messageNode, messageData);
                 
                 // Create a new PstMessage from the node
                 var newMessage = new PstMessage(_pstFile, messageNode);
@@ -599,6 +623,7 @@ namespace PstToolkit
         {
             try
             {
+                Console.WriteLine($"Loading subfolders for folder: {Name} (ID: {FolderId})");
                 _subFolders.Clear();
                 
                 // Find the hierarchy table node for this folder
@@ -607,23 +632,50 @@ namespace PstToolkit
                 
                 // Get all nodes that have this folder as a parent
                 var allNodes = bTree.GetAllNodes();
+                Console.WriteLine($"Total nodes in tree: {allNodes.Count}");
+                
+                // Find all nodes that have this folder as parent
                 var childFolderNodes = allNodes.Where(node => 
                     node.ParentId == FolderId && 
-                    node.NodeId != FolderId &&
-                    (node.NodeId & 0x1Fu) == 0u);  // Folder nodes typically have specific IDs
+                    node.NodeId != FolderId).ToList();
+                    
+                Console.WriteLine($"Found {childFolderNodes.Count} potential child nodes for parent {FolderId}");
+                
+                // If the list is empty, try the legacy ID mask filter as a fallback
+                if (childFolderNodes.Count == 0)
+                {
+                    childFolderNodes = allNodes.Where(node => 
+                        node.ParentId == FolderId && 
+                        node.NodeId != FolderId &&
+                        (node.NodeId & 0x1Fu) == 0u).ToList();  // Folder nodes typically have specific IDs
+                }
+                
+                Console.WriteLine($"Found {childFolderNodes.Count} child folder nodes for parent {FolderId}");
                 
                 foreach (var childNode in childFolderNodes)
                 {
+                    Console.WriteLine($"Processing child node {childNode.NodeId} with parent {childNode.ParentId}");
+                    
                     // Check if we already have this folder cached
                     var cachedFolder = _pstFile.GetCachedFolder(childNode.NodeId);
                     if (cachedFolder != null)
                     {
+                        Console.WriteLine($"Using cached folder: {cachedFolder.Name}");
                         _subFolders.Add(cachedFolder);
                     }
                     else
                     {
                         // Create and add the folder
+                        Console.WriteLine($"Creating new folder from node {childNode.NodeId}");
                         var childFolder = new PstFolder(_pstFile, childNode, this);
+                        
+                        // Set the display name if it exists in the node
+                        if (!string.IsNullOrEmpty(childNode.DisplayName))
+                        {
+                            childFolder.Name = childNode.DisplayName;
+                            Console.WriteLine($"Setting folder name to: {childNode.DisplayName}");
+                        }
+                        
                         _subFolders.Add(childFolder);
                     }
                 }
@@ -632,6 +684,7 @@ namespace PstToolkit
                 // add standard system folders as a fallback for demo purposes
                 if (_subFolders.Count == 0 && Type == FolderType.Root)
                 {
+                    Console.WriteLine("No real subfolders found, creating standard folders for root");
                     CreateStandardFolders();
                 }
                 
@@ -726,11 +779,32 @@ namespace PstToolkit
         
         #region Private Helper Methods
         
+        // Counter to ensure unique IDs
+        private static uint _nextFolderId = 0x1000u;
+        
         private uint GenerateNewFolderId()
         {
-            // In a real implementation, this would allocate a unique ID
-            // For demonstration, we'll create a mock ID
-            return (uint)(PstNodeTypes.NID_TYPE_FOLDER << 5) | (FolderId & 0x1Fu) + 0x1000u;
+            // In a real implementation, this would allocate a unique ID from the 
+            // allocation table in the PST file.
+            
+            // Ensure we don't have ID conflicts by checking if the ID is already
+            // used in the node cache
+            uint newId;
+            var bTree = _pstFile.GetNodeBTree();
+            bool idExists;
+            
+            do {
+                // Create a new ID with the folder type in the high bits and a unique 
+                // counter in the low bits
+                newId = (uint)(PstNodeTypes.NID_TYPE_FOLDER << 5) | (_nextFolderId & 0x1Fu);
+                _nextFolderId++; // Increment for next time
+                
+                // Check if this ID already exists in the node cache
+                idExists = bTree.FindNodeByNid(newId) != null;
+            } while (idExists);
+            
+            Console.WriteLine($"Generated new folder ID: {newId}");
+            return newId;
         }
         
         private uint GenerateNewMessageId()

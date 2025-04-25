@@ -767,6 +767,25 @@
             <param name="data">The data to store in the node.</param>
             <returns>The new node entry.</returns>
         </member>
+        <member name="M:PstToolkit.Utils.BTreeOnHeap.AddNode(PstToolkit.Utils.NdbNodeEntry,System.Byte[])">
+            <summary>
+            Adds an existing node entry to the B-tree.
+            </summary>
+            <param name="node">The node entry to add.</param>
+            <param name="data">The data to store in the node.</param>
+            <returns>The node entry that was added.</returns>
+        </member>
+        <member name="M:PstToolkit.Utils.BTreeOnHeap.AddNode(System.UInt32,System.UInt32,System.UInt32,System.Byte[],System.String)">
+            <summary>
+            Adds a new node to the B-tree with a display name.
+            </summary>
+            <param name="nodeId">The node ID to add.</param>
+            <param name="dataId">The data ID for the node.</param>
+            <param name="parentId">The parent node ID.</param>
+            <param name="data">The data to store in the node.</param>
+            <param name="displayName">The display name for the node (for folders).</param>
+            <returns>The new node entry.</returns>
+        </member>
         <member name="M:PstToolkit.Utils.BTreeOnHeap.RemoveNode(System.UInt32)">
             <summary>
             Removes a node from the B-tree.
@@ -809,6 +828,36 @@
             Gets the data size in bytes.
             </summary>
         </member>
+        <member name="P:PstToolkit.Utils.NdbNodeEntry.DisplayName">
+            <summary>
+            Gets or sets the display name (for folders and messages).
+            </summary>
+        </member>
+        <member name="P:PstToolkit.Utils.NdbNodeEntry.SenderName">
+            <summary>
+            Gets or sets the sender name (for messages).
+            </summary>
+        </member>
+        <member name="P:PstToolkit.Utils.NdbNodeEntry.SenderEmail">
+            <summary>
+            Gets or sets the sender email (for messages).
+            </summary>
+        </member>
+        <member name="P:PstToolkit.Utils.NdbNodeEntry.Subject">
+            <summary>
+            Gets or sets the message subject (for messages).
+            </summary>
+        </member>
+        <member name="P:PstToolkit.Utils.NdbNodeEntry.SentDate">
+            <summary>
+            Gets or sets the sent date (for messages).
+            </summary>
+        </member>
+        <member name="P:PstToolkit.Utils.NdbNodeEntry.Metadata">
+            <summary>
+            Gets or sets additional metadata for the node.
+            </summary>
+        </member>
         <member name="M:PstToolkit.Utils.NdbNodeEntry.#ctor(System.UInt32,System.UInt32,System.UInt32,System.UInt64,System.UInt32)">
             <summary>
             Initializes a new instance of the <see cref="T:PstToolkit.Utils.NdbNodeEntry"/> class.
@@ -819,12 +868,37 @@
             <param name="dataOffset">The data offset in the file.</param>
             <param name="dataSize">The data size in bytes.</param>
         </member>
+        <member name="M:PstToolkit.Utils.NdbNodeEntry.#ctor(System.UInt32,System.UInt32,System.UInt32,System.UInt64,System.UInt32,System.String)">
+            <summary>
+            Initializes a new instance of the <see cref="T:PstToolkit.Utils.NdbNodeEntry"/> class with additional metadata.
+            </summary>
+            <param name="nodeId">The node ID.</param>
+            <param name="dataId">The data ID.</param>
+            <param name="parentId">The parent node ID.</param>
+            <param name="dataOffset">The data offset in the file.</param>
+            <param name="dataSize">The data size in bytes.</param>
+            <param name="displayName">The display name for the node.</param>
+        </member>
         <member name="M:PstToolkit.Utils.NdbNodeEntry.ReadData(PstToolkit.PstFile)">
             <summary>
             Reads node data from the PST file.
             </summary>
             <param name="pstFile">The PST file.</param>
             <returns>The node data as a byte array.</returns>
+        </member>
+        <member name="M:PstToolkit.Utils.NdbNodeEntry.SetMetadata(System.String,System.String)">
+            <summary>
+            Sets a metadata value for the node.
+            </summary>
+            <param name="key">The metadata key.</param>
+            <param name="value">The metadata value.</param>
+        </member>
+        <member name="M:PstToolkit.Utils.NdbNodeEntry.GetMetadata(System.String)">
+            <summary>
+            Gets a metadata value from the node.
+            </summary>
+            <param name="key">The metadata key.</param>
+            <returns>The metadata value, or null if the key doesn't exist.</returns>
         </member>
         <member name="M:PstToolkit.Utils.NdbNodeEntry.Create(System.UInt32,System.UInt32,System.UInt32,System.UInt64,System.UInt32)">
             <summary>
