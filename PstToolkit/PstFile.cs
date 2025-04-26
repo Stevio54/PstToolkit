@@ -313,23 +313,55 @@ namespace PstToolkit
                     // Get message raw content and create a copy
                     byte[] rawContent = message.GetRawContent();
                     
-                    // Create a new message
-                    var newMessage = PstMessage.Create(this, 
-                        message.Subject, 
-                        message.BodyText ?? string.Empty, 
-                        message.SenderEmail ?? string.Empty, 
-                        message.SenderName ?? string.Empty);
+                    // Create a MimeMessage from the original message to ensure all properties are copied
+                    var mimeMessage = message.ToMimeMessage();
                     
-                    // Copy additional properties if available
+                    // Create a new message from the MimeMessage to preserve all metadata
+                    var newMessage = PstMessage.Create(this, mimeMessage);
+                    
+                    // Ensure critical properties are set correctly
+                    if (string.IsNullOrEmpty(newMessage.Subject) && !string.IsNullOrEmpty(message.Subject))
+                    {
+                        // Create a new message using the direct method as fallback if needed
+                        newMessage = PstMessage.Create(this, 
+                            message.Subject, 
+                            message.BodyText ?? string.Empty, 
+                            message.SenderEmail ?? string.Empty, 
+                            message.SenderName ?? string.Empty);
+                    }
+                    
+                    // Copy all attachments including nested email attachments
                     if (message.HasAttachments)
                     {
-                        foreach (var attachName in message.AttachmentNames)
+                        // Get all attachments
+                        var attachments = message.GetAttachments();
+                        
+                        foreach (var attachment in attachments)
                         {
-                            // For simplicity we're adding a placeholder attachment
-                            // In a real implementation, we would extract and copy the actual attachment
-                            var attachData = Encoding.UTF8.GetBytes(
-                                $"This is a placeholder for attachment: {attachName}");
-                            newMessage.AddAttachment(attachName, attachData, "application/octet-stream");
+                            // Get the attachment content
+                            byte[] attachmentContent = attachment.GetContent();
+                            
+                            // Check if it's an email attachment
+                            if (attachment.IsEmailMessage)
+                            {
+                                // Process it as an email
+                                var emailAttachment = attachment.GetAsEmailMessage();
+                                if (emailAttachment != null)
+                                {
+                                    // Add the email as an attachment with all its data intact
+                                    newMessage.AddEmailAttachment(emailAttachment);
+                                }
+                                else
+                                {
+                                    // If failed to parse as email, add as regular attachment
+                                    newMessage.AddAttachment(attachment.Filename, attachmentContent, attachment.ContentType);
+                                }
+                            }
+                            else
+                            {
+                                // Regular attachment, just copy it
+                                newMessage.AddAttachment(attachment.Filename, attachmentContent, attachment.ContentType);
+                            }
                         }
                     }
                     
