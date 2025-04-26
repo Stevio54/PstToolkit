@@ -386,6 +386,11 @@ namespace PstToolkit
             /// Gets whether the attachment is embedded (displayed inline in the message).
             /// </summary>
             public bool IsEmbedded { get; internal set; }
+            
+            /// <summary>
+            /// Gets whether this attachment is an email message.
+            /// </summary>
+            public bool IsEmailMessage => ContentType.Equals("message/rfc822", StringComparison.OrdinalIgnoreCase);
 
             /// <summary>
             /// Gets the attachment data as a byte array.
@@ -407,19 +412,114 @@ namespace PstToolkit
 
                 return Array.Empty<byte>();
             }
+            
+            /// <summary>
+            /// If this attachment is an email message, gets it as a PstMessage.
+            /// Returns null if the attachment is not an email message.
+            /// </summary>
+            /// <returns>A PstMessage if the attachment is an email, otherwise null.</returns>
+            public PstMessage? GetAsEmailMessage()
+            {
+                if (!IsEmailMessage)
+                {
+                    return null;
+                }
+                
+                try
+                {
+                    byte[] content = GetContent();
+                    if (content.Length == 0)
+                    {
+                        return null;
+                    }
+                    
+                    // Parse the content as a MimeMessage
+                    using var stream = new MemoryStream(content);
+                    var mimeMessage = MimeMessage.Load(stream);
+                    
+                    // Create a new PstMessage from the MimeMessage
+                    var nodeEntry = new NdbNodeEntry(
+                        // Generate a temporary ID for this email attachment
+                        (uint)(0x20000000 | (uint)DateTime.Now.Ticks & 0xFFFFFF),
+                        0,  // No parent - this is not in the PST structure
+                        0,  // Block ID - not applicable here
+                        0,  // Data offset - not applicable here
+                        (uint)content.Length
+                    );
+                    
+                    var message = new PstMessage(_parentMessage._pstFile, nodeEntry);
+                    
+                    // Set basic properties from the parsed MimeMessage
+                    message.Subject = mimeMessage.Subject ?? "";
+                    
+                    if (mimeMessage.From.FirstOrDefault() is MailboxAddress from)
+                    {
+                        message.SenderName = from.Name ?? "";
+                        message.SenderEmail = from.Address ?? "";
+                    }
+                    
+                    message.SentDate = mimeMessage.Date.DateTime;
+                    message.ReceivedDate = DateTime.Now;
+                    
+                    message.Recipients = new List<string>();
+                    foreach (var to in mimeMessage.To.OfType<MailboxAddress>())
+                    {
+                        message.Recipients.Add(to.Address);
+                    }
+                    
+                    if (mimeMessage.TextBody != null)
+                    {
+                        message.BodyText = mimeMessage.TextBody;
+                    }
+                    
+                    if (mimeMessage.HtmlBody != null)
+                    {
+                        message.BodyHtml = mimeMessage.HtmlBody;
+                    }
+                    
+                    // Store the raw content
+                    message._rawContent = content;
+                    message._parsedMimeMessage = mimeMessage;
+                    
+                    // Check for attachments
+                    if (mimeMessage.Attachments.Any())
+                    {
+                        message.HasAttachments = true;
+                        
+                        // For consistency, we'll extract nested attachment names
+                        foreach (var attachment in mimeMessage.Attachments)
+                        {
+                            string filename = attachment.ContentDisposition?.FileName ?? 
+                                              attachment.ContentType.Name ?? 
+                                              "attachment";
+                            message.AttachmentNames.Add(filename);
+                        }
+                    }
+                    
+                    return message;
+                }
+                catch (Exception ex)
+                {
+                    // Log the error (in a real implementation)
+                    Console.WriteLine($"Error parsing nested email: {ex.Message}");
+                    return null;
+                }
+            }
 
-            internal Attachment()
+            internal Attachment(PstMessage parentMessage)
             {
                 Filename = "";
                 LongFilename = "";
                 ContentType = "application/octet-stream";
                 Size = 0;
                 IsEmbedded = false;
+                _parentMessage = parentMessage;
             }
 
             internal Func<byte[]>? _contentLoader;
             private byte[] _content = Array.Empty<byte>();
             private bool _contentLoaded = false;
+            private readonly PstMessage _parentMessage;
         }
 
         /// <summary>
@@ -458,7 +558,7 @@ namespace PstToolkit
                         {
                             uint attachmentId = _nodeEntry.NodeId + 0x10000 + (uint)i;
                             
-                            var attachment = new Attachment
+                            var attachment = new Attachment(this)
                             {
                                 Filename = $"attachment{i + 1}.txt",
                                 LongFilename = $"attachment{i + 1}.txt",
@@ -481,6 +581,152 @@ namespace PstToolkit
             {
                 throw new PstException("Error loading attachments", ex);
             }
+        }
+        
+        /// <summary>
+        /// Gets all nested email messages from the attachments.
+        /// </summary>
+        /// <returns>A list of email messages that were attachments to this message.</returns>
+        public List<PstMessage> GetNestedEmailAttachments()
+        {
+            var result = new List<PstMessage>();
+            
+            try
+            {
+                // Get all attachments
+                var attachments = GetAttachments();
+                
+                // Filter for email attachments
+                foreach (var attachment in attachments)
+                {
+                    if (attachment.IsEmailMessage)
+                    {
+                        var emailMessage = attachment.GetAsEmailMessage();
+                        if (emailMessage != null)
+                        {
+                            result.Add(emailMessage);
+                        }
+                    }
+                }
+                
+                return result;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error getting nested email attachments: {ex.Message}");
+                return result;
+            }
+        }
+        
+        /// <summary>
+        /// Extracts all email attachments, including nested ones, to EML files in the specified directory.
+        /// </summary>
+        /// <param name="outputDirectory">The directory to save the extracted email files.</param>
+        /// <param name="recursionLevel">The current recursion level, used internally to prevent infinite recursion.</param>
+        /// <param name="parentPath">The parent path prefix, used internally for nested emails.</param>
+        /// <returns>The number of emails extracted.</returns>
+        public int ExtractAllEmailAttachments(string outputDirectory, int recursionLevel = 0, string parentPath = "")
+        {
+            // Prevent infinite recursion by limiting depth
+            if (recursionLevel > 5)
+            {
+                return 0;
+            }
+            
+            int extractedCount = 0;
+            
+            try
+            {
+                // Ensure the output directory exists
+                if (!Directory.Exists(outputDirectory))
+                {
+                    Directory.CreateDirectory(outputDirectory);
+                }
+                
+                // Get all email attachments
+                var emailAttachments = GetNestedEmailAttachments();
+                
+                foreach (var emailMsg in emailAttachments)
+                {
+                    try
+                    {
+                        string prefix = string.IsNullOrEmpty(parentPath) ? "" : parentPath + "_";
+                        string filenameBase = $"{prefix}{emailMsg.Subject}_{emailMsg.SentDate:yyyy-MM-dd_HHmmss}";
+                        
+                        // Remove invalid filename characters
+                        foreach (var invalidChar in Path.GetInvalidFileNameChars())
+                        {
+                            filenameBase = filenameBase.Replace(invalidChar, '_');
+                        }
+                        
+                        // Export the email as EML
+                        string emlFilePath = Path.Combine(outputDirectory, filenameBase + ".eml");
+                        
+                        // Write the content to the file
+                        var mimeMessage = emailMsg.ToMimeMessage();
+                        using (var stream = new FileStream(emlFilePath, FileMode.Create))
+                        {
+                            mimeMessage.WriteTo(stream);
+                        }
+                        
+                        extractedCount++;
+                        
+                        // Recursively extract nested email attachments
+                        string nestedPrefix = string.IsNullOrEmpty(prefix) ? "Nested" : prefix + "Nested";
+                        extractedCount += emailMsg.ExtractAllEmailAttachments(
+                            outputDirectory, 
+                            recursionLevel + 1, 
+                            nestedPrefix);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Error extracting nested email: {ex.Message}");
+                    }
+                }
+                
+                return extractedCount;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error extracting email attachments: {ex.Message}");
+                return extractedCount;
+            }
+        }
+        
+        /// <summary>
+        /// Adds another email message as an attachment to this message.
+        /// </summary>
+        /// <param name="emailMessage">The email message to attach.</param>
+        /// <returns>The newly added attachment.</returns>
+        public Attachment AddEmailAttachment(PstMessage emailMessage)
+        {
+            // Convert the email to a MimeMessage
+            var mimeMessage = emailMessage.ToMimeMessage();
+            
+            // Get the raw content
+            byte[] content;
+            using (var memStream = new MemoryStream())
+            {
+                mimeMessage.WriteTo(memStream);
+                content = memStream.ToArray();
+            }
+            
+            // Create a filename based on the subject
+            string filename = !string.IsNullOrEmpty(emailMessage.Subject) 
+                ? emailMessage.Subject.Trim() 
+                : "Email Message";
+                
+            // Sanitize the filename
+            foreach (var invalidChar in Path.GetInvalidFileNameChars())
+            {
+                filename = filename.Replace(invalidChar, '_');
+            }
+            
+            // Add timestamp to make the filename unique
+            filename = $"{filename}_{DateTime.Now:yyyyMMdd_HHmmss}.eml";
+            
+            // Add the attachment with MIME type for email messages
+            return AddAttachment(filename, content, "message/rfc822");
         }
         
         /// <summary>
@@ -518,7 +764,7 @@ namespace PstToolkit
                 var nodeEntry = bTree.AddNode(attachmentId, 0, _nodeEntry.NodeId, content);
                 
                 // Create the attachment object
-                var attachment = new Attachment
+                var attachment = new Attachment(this)
                 {
                     Filename = Path.GetFileName(filename),
                     LongFilename = filename,

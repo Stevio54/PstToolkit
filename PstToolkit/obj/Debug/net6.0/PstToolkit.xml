@@ -637,17 +637,51 @@
             Gets whether the attachment is embedded (displayed inline in the message).
             </summary>
         </member>
+        <member name="P:PstToolkit.PstMessage.Attachment.IsEmailMessage">
+            <summary>
+            Gets whether this attachment is an email message.
+            </summary>
+        </member>
         <member name="M:PstToolkit.PstMessage.Attachment.GetContent">
             <summary>
             Gets the attachment data as a byte array.
             </summary>
             <returns>The attachment content as a byte array.</returns>
         </member>
+        <member name="M:PstToolkit.PstMessage.Attachment.GetAsEmailMessage">
+            <summary>
+            If this attachment is an email message, gets it as a PstMessage.
+            Returns null if the attachment is not an email message.
+            </summary>
+            <returns>A PstMessage if the attachment is an email, otherwise null.</returns>
+        </member>
         <member name="M:PstToolkit.PstMessage.GetAttachments">
             <summary>
             Gets the attachments of the message.
             </summary>
             <returns>A list of attachments.</returns>
+        </member>
+        <member name="M:PstToolkit.PstMessage.GetNestedEmailAttachments">
+            <summary>
+            Gets all nested email messages from the attachments.
+            </summary>
+            <returns>A list of email messages that were attachments to this message.</returns>
+        </member>
+        <member name="M:PstToolkit.PstMessage.ExtractAllEmailAttachments(System.String,System.Int32,System.String)">
+            <summary>
+            Extracts all email attachments, including nested ones, to EML files in the specified directory.
+            </summary>
+            <param name="outputDirectory">The directory to save the extracted email files.</param>
+            <param name="recursionLevel">The current recursion level, used internally to prevent infinite recursion.</param>
+            <param name="parentPath">The parent path prefix, used internally for nested emails.</param>
+            <returns>The number of emails extracted.</returns>
+        </member>
+        <member name="M:PstToolkit.PstMessage.AddEmailAttachment(PstToolkit.PstMessage)">
+            <summary>
+            Adds another email message as an attachment to this message.
+            </summary>
+            <param name="emailMessage">The email message to attach.</param>
+            <returns>The newly added attachment.</returns>
         </member>
         <member name="M:PstToolkit.PstMessage.AddAttachment(System.String,System.Byte[],System.String)">
             <summary>
