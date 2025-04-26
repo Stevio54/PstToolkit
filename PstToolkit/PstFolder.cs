@@ -725,48 +725,52 @@ namespace PstToolkit
             {
                 _messages.Clear();
                 
-                // Find the contents table node for this folder
+                // Find messages in the node cache that have this folder as parent
                 var bTree = _pstFile.GetNodeBTree();
-                var contentsTableNode = bTree.FindNodeByNid(_contentsTableNodeId);
+                var allNodes = bTree.GetAllNodes();
                 
+                Console.WriteLine($"Looking for messages in folder: {Name} (ID: {FolderId})");
+                Console.WriteLine($"Scanning {allNodes.Count} nodes for messages with parent ID {FolderId}");
+                
+                // First, search for message nodes that have this folder as parent
+                int realMessagesFound = 0;
+                foreach (var node in allNodes)
+                {
+                    // Check if the node is a message type and has this folder as its parent
+                    if (node.NodeType == PstNodeTypes.NID_TYPE_MESSAGE && node.ParentId == FolderId)
+                    {
+                        Console.WriteLine($"Found message node {node.NodeId} with parent {node.ParentId}, name: {node.DisplayName ?? "(no name)"}");
+                        
+                        // Create a message object from the node
+                        var message = new PstMessage(_pstFile, node);
+                        
+                        // Add it to the messages list
+                        _messages.Add(message);
+                        realMessagesFound++;
+                    }
+                }
+                
+                // If we found real messages, use those
+                if (realMessagesFound > 0)
+                {
+                    Console.WriteLine($"Loaded {realMessagesFound} real messages for folder '{Name}' from node cache");
+                    _messagesLoaded = true;
+                    return;
+                }
+                
+                // As a fallback, check the contents table 
+                // (this is how it would work in a real PST file)
+                var contentsTableNode = bTree.FindNodeByNid(_contentsTableNodeId);
                 if (contentsTableNode != null)
                 {
+                    Console.WriteLine($"No messages found directly. Checking contents table for folder '{Name}'");
+                    
                     // In a real implementation, this would:
                     // 1. Read the contents table rows
                     // 2. Extract the message node IDs
                     // 3. Load each message
                     
-                    // For this implementation, we'll create mock messages
-                    // based on folder type and name
-                    
-                    // Number of sample messages to create
-                    int messageCount = 0;
-                    switch (Type)
-                    {
-                        case FolderType.Inbox:
-                            messageCount = 5;
-                            break;
-                        case FolderType.SentItems:
-                            messageCount = 3;
-                            break;
-                        case FolderType.Drafts:
-                            messageCount = 1;
-                            break;
-                        default:
-                            messageCount = 0;
-                            break;
-                    }
-                    
-                    // Create sample messages
-                    for (int i = 0; i < messageCount; i++)
-                    {
-                        uint messageId = FolderId + 0x1000u + (uint)i;
-                        var mockNode = new NdbNodeEntry(messageId, 0u, FolderId, 0ul, 0u);
-                        
-                        // Create the message and add to our list
-                        var message = new PstMessage(_pstFile, mockNode);
-                        _messages.Add(message);
-                    }
+                    // We'll leave this empty for now, as we're using the real nodes from the cache
                 }
                 
                 _messagesLoaded = true;

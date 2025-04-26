@@ -820,12 +820,12 @@
         </member>
         <member name="P:PstToolkit.Utils.NdbNodeEntry.DataOffset">
             <summary>
-            Gets the data offset in the file.
+            Gets or sets the data offset in the file.
             </summary>
         </member>
         <member name="P:PstToolkit.Utils.NdbNodeEntry.DataSize">
             <summary>
-            Gets the data size in bytes.
+            Gets or sets the data size in bytes.
             </summary>
         </member>
         <member name="P:PstToolkit.Utils.NdbNodeEntry.DisplayName">

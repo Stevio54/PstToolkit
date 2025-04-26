@@ -51,6 +51,16 @@ namespace PstToolkitDemo
                         ListFolders(args[1]);
                         break;
                         
+                    case "listmessages":
+                        if (args.Length < 3)
+                        {
+                            Console.WriteLine("Error: PST file path and folder name are required for listmessages command.");
+                            ShowUsage();
+                            return;
+                        }
+                        ListMessages(args[1], args[2]);
+                        break;
+                        
                     case "copy":
                         if (args.Length < 3)
                         {
@@ -127,6 +137,7 @@ namespace PstToolkitDemo
             Console.WriteLine("Usage:");
             Console.WriteLine("  PstToolkitDemo info <pst_file>                 - Show information about a PST file");
             Console.WriteLine("  PstToolkitDemo list <pst_file>                 - List all folders in a PST file");
+            Console.WriteLine("  PstToolkitDemo listmessages <pst_file> <folder> - List all messages in a folder");
             Console.WriteLine("  PstToolkitDemo copy <src> <dst>                - Copy messages from source PST to destination PST");
             Console.WriteLine("  PstToolkitDemo create <pst_file>               - Create a new PST file");
             Console.WriteLine("  PstToolkitDemo message <pst_file> <folder>     - Add a sample message to the specified folder");
@@ -174,27 +185,48 @@ namespace PstToolkitDemo
         {
             Console.WriteLine($"Copying PST file: {sourcePath} -> {destPath}");
             
-            // Open source PST in read-only mode
-            using var sourcePst = PstFile.Open(sourcePath, readOnly: true);
-            
-            // Create a new destination PST
-            using var destPst = PstFile.Create(destPath);
-            
-            Console.WriteLine("Copying folders and messages...");
-            
-            // Set up progress reporting
-            int lastPercent = -1;
-            destPst.CopyFrom(sourcePst, progress => {
-                int percent = (int)(progress * 100);
-                if (percent > lastPercent)
+            try
+            {
+                // Open source PST in read-only mode
+                using var sourcePst = PstFile.Open(sourcePath, readOnly: true);
+                
+                // Handle existing destination file
+                if (File.Exists(destPath))
                 {
-                    Console.Write($"\rProgress: {percent}%");
-                    lastPercent = percent;
+                    // If file exists, delete it (for simplicity)
+                    // In a real application, you might want to ask for confirmation
+                    Console.WriteLine($"Destination file already exists, removing: {destPath}");
+                    File.Delete(destPath);
                 }
-            });
-            
-            Console.WriteLine("\rProgress: 100%");
-            Console.WriteLine("Copy completed successfully!");
+                
+                // Create a new destination PST
+                Console.WriteLine($"Creating new destination file: {destPath}");
+                using var destPst = PstFile.Create(destPath);
+                
+                Console.WriteLine("Copying folders and messages...");
+                
+                // Set up progress reporting
+                int lastPercent = -1;
+                destPst.CopyFrom(sourcePst, progress => {
+                    int percent = (int)(progress * 100);
+                    if (percent > lastPercent)
+                    {
+                        Console.Write($"\rProgress: {percent}%");
+                        lastPercent = percent;
+                    }
+                });
+                
+                Console.WriteLine("\rProgress: 100%");
+                Console.WriteLine("Copy completed successfully!");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error during copy: {ex.Message}");
+                if (ex.InnerException != null)
+                {
+                    Console.WriteLine($"Details: {ex.InnerException.Message}");
+                }
+            }
         }
 
         static void CreatePst(string pstFilePath)
@@ -272,6 +304,8 @@ namespace PstToolkitDemo
                 
                 Console.WriteLine("Sample message created and added successfully");
                 Console.WriteLine($"Subject: {subject}");
+                Console.WriteLine($"Sender: {message.SenderName} <{message.SenderEmail}>");
+                Console.WriteLine($"Date: {message.SentDate}");
                 Console.WriteLine($"Size: {message.Size} bytes");
                 Console.WriteLine($"Has attachment: {message.HasAttachments}");
             }
@@ -402,7 +436,63 @@ namespace PstToolkitDemo
             }
         }
         
-        static PstFolder FindFolderByPath(PstFolder rootFolder, string path)
+        static void ListMessages(string pstFilePath, string folderName)
+        {
+            Console.WriteLine($"Listing messages in folder '{folderName}' of PST file: {pstFilePath}");
+            
+            try
+            {
+                // Open the PST file
+                using var pst = PstFile.Open(pstFilePath, readOnly: true);
+                
+                // Find the folder
+                var folder = FindFolderByPath(pst.RootFolder, folderName);
+                if (folder == null)
+                {
+                    Console.WriteLine($"Error: Folder '{folderName}' not found");
+                    return;
+                }
+                
+                // Get messages in the folder
+                var messages = folder.Messages;
+                if (messages.Count == 0)
+                {
+                    Console.WriteLine("No messages found in the specified folder");
+                    return;
+                }
+                
+                Console.WriteLine($"Found {messages.Count} messages in folder '{folder.Name}'");
+                Console.WriteLine();
+                
+                // Display a table header for messages
+                Console.WriteLine("ID".PadRight(10) + "Subject".PadRight(50) + "Sender".PadRight(30) + "Date".PadRight(25) + "Size");
+                Console.WriteLine("".PadRight(120, '-'));
+                
+                // List each message with its metadata
+                foreach (var message in messages)
+                {
+                    string id = $"{message.MessageId:X}".PadRight(10);
+                    string subject = (message.Subject.Length > 47 ? message.Subject.Substring(0, 47) + "..." : message.Subject).PadRight(50);
+                    string sender = (message.SenderName.Length > 27 ? message.SenderName.Substring(0, 27) + "..." : message.SenderName).PadRight(30);
+                    string date = message.SentDate.ToString("g").PadRight(25);
+                    string size = $"{message.Size:N0} bytes";
+                    
+                    Console.WriteLine($"{id}{subject}{sender}{date}{size}");
+                    
+                    // Display additional details for the message
+                    if (message.HasAttachments)
+                    {
+                        Console.WriteLine($"  Attachments: {string.Join(", ", message.AttachmentNames)}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error: {ex.Message}");
+            }
+        }
+        
+        static PstFolder? FindFolderByPath(PstFolder rootFolder, string path)
         {
             // Handle special case for root folder
             if (path == "/" || path == "\\" || string.IsNullOrWhiteSpace(path))
@@ -425,6 +515,7 @@ namespace PstToolkitDemo
                 if (nextFolder == null)
                 {
                     // Folder not found
+                    Console.WriteLine($"Folder segment not found: {segment}");
                     return null;
                 }
                 

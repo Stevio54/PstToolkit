@@ -29,14 +29,14 @@ namespace PstToolkit.Utils
         public ushort NodeType { get; }
 
         /// <summary>
-        /// Gets the data offset in the file.
+        /// Gets or sets the data offset in the file.
         /// </summary>
-        public ulong DataOffset { get; }
+        public ulong DataOffset { get; set; }
 
         /// <summary>
-        /// Gets the data size in bytes.
+        /// Gets or sets the data size in bytes.
         /// </summary>
-        public uint DataSize { get; }
+        public uint DataSize { get; set; }
         
         /// <summary>
         /// Gets or sets the display name (for folders and messages).
