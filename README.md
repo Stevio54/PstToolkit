@@ -4,27 +4,69 @@ A C# library for reading, creating, and transferring email messages between PST 
 
 ## Features
 
-- Open and read PST files
-- Extract email messages and their metadata
-- Create new PST files programmatically
-- Copy messages between PST files
-- Handle various PST file formats and versions (ANSI and Unicode)
-- Manage PST file structure (folders, subfolders)
-- No dependency on Outlook Interop
-- No use of paid/commercial libraries
+- Open and read existing PST files
+- Create new PST files from scratch
+- Extract messages to EML format
+- Copy messages and folders between PST files
+- Proper support for folder hierarchies and message metadata
 
-## Requirements
+## Usage Examples
 
-- .NET 6.0 or later
-- MimeKit (for email format handling)
+### Reading a PST file
 
-## Getting Started
+```csharp
+using PstToolkit;
 
-### Installation
+// Open an existing PST file in read-only mode
+using var pst = PstFile.Open("example.pst", readOnly: true);
 
-Clone this repository and build the solution using Visual Studio or the .NET CLI:
+// Access the root folder
+var rootFolder = pst.RootFolder;
 
-```bash
-git clone https://github.com/yourusername/PstToolkit.git
-cd PstToolkit
-dotnet build
+// List folders and messages
+Console.WriteLine($"Root folder name: {rootFolder.Name}");
+foreach (var folder in rootFolder.SubFolders)
+{
+    Console.WriteLine($"Folder: {folder.Name} ({folder.MessageCount} messages)");
+}
+```
+
+### Creating a new PST file
+
+```csharp
+using PstToolkit;
+
+// Create a new PST file
+using var pst = PstFile.Create("new.pst");
+
+// Create folders
+var inboxFolder = pst.RootFolder.CreateSubFolder("Inbox");
+var testFolder = inboxFolder.CreateSubFolder("Test");
+
+// Create a message
+var message = PstMessage.Create(pst, 
+    "Test Subject", 
+    "This is the message body", 
+    "sender@example.com", 
+    "Sender Name");
+
+// Add the message to a folder
+testFolder.AddMessage(message);
+```
+
+### Copying between PST files
+
+```csharp
+using PstToolkit;
+
+// Open source and destination PST files
+using var sourcePst = PstFile.Open("source.pst", readOnly: true);
+using var destPst = PstFile.Create("destination.pst");
+
+// Copy all content from source to destination
+destPst.CopyFrom(sourcePst);
+```
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
