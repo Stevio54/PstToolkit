@@ -2,7 +2,7 @@ modules = ["dotnet"]
 
 [nix]
 channel = "stable-24_05"
-packages = ["dotnet-sdk"]
+packages = ["dotnet-sdk", "zip"]
 
 [workflows]
 runButton = "Project"
