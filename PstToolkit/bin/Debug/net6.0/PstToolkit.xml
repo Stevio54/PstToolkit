@@ -232,6 +232,16 @@
             Node type for contents table of a search folder.
             </summary>
         </member>
+        <member name="F:PstToolkit.Formats.PstNodeTypes.NID_TYPE_ATTACHMENT_DATA">
+            <summary>
+            Node type for attachment data.
+            </summary>
+        </member>
+        <member name="F:PstToolkit.Formats.PstNodeTypes.NID_TYPE_ATTACHMENT_OBJECT">
+            <summary>
+            Node type for embedded message object.
+            </summary>
+        </member>
         <member name="M:PstToolkit.Formats.PstNodeTypes.GetNodeType(System.UInt32)">
             <summary>
             Extracts the node type from a node ID.
@@ -267,6 +277,200 @@
             <param name="type">The node type.</param>
             <param name="id">The node-specific ID.</param>
             <returns>A new node ID.</returns>
+        </member>
+        <member name="T:PstToolkit.FilterOperator">
+            <summary>
+            Filtering options for message properties
+            </summary>
+        </member>
+        <member name="F:PstToolkit.FilterOperator.Contains">
+            <summary>
+            Contains the specified text (case-insensitive)
+            </summary>
+        </member>
+        <member name="F:PstToolkit.FilterOperator.StartsWith">
+            <summary>
+            Starts with the specified text (case-insensitive)
+            </summary>
+        </member>
+        <member name="F:PstToolkit.FilterOperator.EndsWith">
+            <summary>
+            Ends with the specified text (case-insensitive)
+            </summary>
+        </member>
+        <member name="F:PstToolkit.FilterOperator.Equals">
+            <summary>
+            Equals the specified text (case-insensitive)
+            </summary>
+        </member>
+        <member name="F:PstToolkit.FilterOperator.RegexMatch">
+            <summary>
+            Matches the specified regular expression pattern
+            </summary>
+        </member>
+        <member name="F:PstToolkit.FilterOperator.GreaterThan">
+            <summary>
+            Greater than the specified value (for dates and numeric values)
+            </summary>
+        </member>
+        <member name="F:PstToolkit.FilterOperator.LessThan">
+            <summary>
+            Less than the specified value (for dates and numeric values)
+            </summary>
+        </member>
+        <member name="F:PstToolkit.FilterOperator.Between">
+            <summary>
+            Between the specified range (for dates and numeric values)
+            </summary>
+        </member>
+        <member name="F:PstToolkit.FilterOperator.HasValue">
+            <summary>
+            Has any value (not null or empty)
+            </summary>
+        </member>
+        <member name="F:PstToolkit.FilterOperator.InList">
+            <summary>
+            Is in a list of values
+            </summary>
+        </member>
+        <member name="T:PstToolkit.FilterCondition">
+            <summary>
+            Represents a filter condition for message properties
+            </summary>
+        </member>
+        <member name="P:PstToolkit.FilterCondition.Property">
+            <summary>
+            The property to filter by (e.g., "Subject", "SenderEmail", "ReceivedDate")
+            </summary>
+        </member>
+        <member name="P:PstToolkit.FilterCondition.Operator">
+            <summary>
+            The filter operator to apply
+            </summary>
+        </member>
+        <member name="P:PstToolkit.FilterCondition.Value">
+            <summary>
+            The value to compare against
+            </summary>
+        </member>
+        <member name="P:PstToolkit.FilterCondition.Value2">
+            <summary>
+            The second value for range operations (e.g., Between)
+            </summary>
+        </member>
+        <member name="M:PstToolkit.FilterCondition.#ctor(System.String,PstToolkit.FilterOperator,System.Object)">
+            <summary>
+            Initializes a new instance of the <see cref="T:PstToolkit.FilterCondition"/> class
+            </summary>
+            <param name="property">The property to filter by</param>
+            <param name="operator">The filter operator to apply</param>
+            <param name="value">The value to compare against</param>
+        </member>
+        <member name="M:PstToolkit.FilterCondition.#ctor(System.String,PstToolkit.FilterOperator,System.Object,System.Object)">
+            <summary>
+            Initializes a new instance of the <see cref="T:PstToolkit.FilterCondition"/> class with a second value for range operations
+            </summary>
+            <param name="property">The property to filter by</param>
+            <param name="operator">The filter operator to apply</param>
+            <param name="value">The first value to compare against</param>
+            <param name="value2">The second value for range operations</param>
+        </member>
+        <member name="T:PstToolkit.FilterGroup">
+            <summary>
+            Represents a group of filter conditions with a logical operator
+            </summary>
+        </member>
+        <member name="P:PstToolkit.FilterGroup.Conditions">
+            <summary>
+            The conditions in this group
+            </summary>
+        </member>
+        <member name="P:PstToolkit.FilterGroup.UseAnd">
+            <summary>
+            Whether to combine conditions with AND (true) or OR (false)
+            </summary>
+        </member>
+        <member name="P:PstToolkit.FilterGroup.NestedGroups">
+            <summary>
+            Nested filter groups for complex filtering
+            </summary>
+        </member>
+        <member name="P:PstToolkit.FilterGroup.CombineNestedWithAnd">
+            <summary>
+            Whether to combine nested groups with AND (true) or OR (false)
+            </summary>
+        </member>
+        <member name="M:PstToolkit.FilterGroup.AddCondition(PstToolkit.FilterCondition)">
+            <summary>
+            Adds a condition to this filter group
+            </summary>
+            <param name="condition">The condition to add</param>
+            <returns>This filter group for chaining</returns>
+        </member>
+        <member name="M:PstToolkit.FilterGroup.AddNestedGroup(PstToolkit.FilterGroup)">
+            <summary>
+            Adds a nested filter group to this filter group
+            </summary>
+            <param name="nestedGroup">The nested group to add</param>
+            <returns>This filter group for chaining</returns>
+        </member>
+        <member name="T:PstToolkit.MessageFilter">
+            <summary>
+            A flexible filtering system for PST messages based on various criteria
+            </summary>
+        </member>
+        <member name="M:PstToolkit.MessageFilter.#ctor">
+            <summary>
+            Creates a new instance of the MessageFilter class
+            </summary>
+        </member>
+        <member name="M:PstToolkit.MessageFilter.#ctor(System.String,PstToolkit.FilterOperator,System.Object)">
+            <summary>
+            Creates a new instance of the MessageFilter class with an initial filter condition
+            </summary>
+            <param name="property">The property to filter by</param>
+            <param name="operator">The filter operator to apply</param>
+            <param name="value">The value to compare against</param>
+        </member>
+        <member name="M:PstToolkit.MessageFilter.CreateGroup(System.Boolean)">
+            <summary>
+            Creates a new filter group for complex filtering
+            </summary>
+            <param name="useAnd">Whether to combine conditions with AND (true) or OR (false)</param>
+            <returns>A new filter group</returns>
+        </member>
+        <member name="M:PstToolkit.MessageFilter.AddCondition(System.String,PstToolkit.FilterOperator,System.Object)">
+            <summary>
+            Adds a filter condition to the root group
+            </summary>
+            <param name="property">The property to filter by</param>
+            <param name="operator">The filter operator to apply</param>
+            <param name="value">The value to compare against</param>
+            <returns>This message filter for chaining</returns>
+        </member>
+        <member name="M:PstToolkit.MessageFilter.AddCondition(System.String,PstToolkit.FilterOperator,System.Object,System.Object)">
+            <summary>
+            Adds a filter condition with a range to the root group
+            </summary>
+            <param name="property">The property to filter by</param>
+            <param name="operator">The filter operator to apply</param>
+            <param name="value">The first value to compare against</param>
+            <param name="value2">The second value for range operations</param>
+            <returns>This message filter for chaining</returns>
+        </member>
+        <member name="M:PstToolkit.MessageFilter.CombineWithAnd(System.Boolean)">
+            <summary>
+            Sets whether to combine conditions in the root group with AND (true) or OR (false)
+            </summary>
+            <param name="useAnd">Whether to use AND (true) or OR (false)</param>
+            <returns>This message filter for chaining</returns>
+        </member>
+        <member name="M:PstToolkit.MessageFilter.Matches(PstToolkit.PstMessage)">
+            <summary>
+            Checks if a message matches this filter
+            </summary>
+            <param name="message">The message to check</param>
+            <returns>True if the message matches the filter, false otherwise</returns>
         </member>
         <member name="T:PstToolkit.PstFile">
             <summary>
@@ -324,6 +528,15 @@
             <param name="progressCallback">Optional callback to report progress (0.0 to 1.0)</param>
             <exception cref="T:PstToolkit.Exceptions.PstException">Thrown when the copying operation fails.</exception>
         </member>
+        <member name="M:PstToolkit.PstFile.CopyFrom(PstToolkit.PstFile,PstToolkit.MessageFilter,System.Action{System.Double})">
+            <summary>
+            Copies filtered messages from another PST file into this one.
+            </summary>
+            <param name="sourcePst">The source PST file to copy from.</param>
+            <param name="filter">A filter to apply to the messages being copied, or null to copy all messages.</param>
+            <param name="progressCallback">Optional callback to report progress (0.0 to 1.0)</param>
+            <exception cref="T:PstToolkit.Exceptions.PstException">Thrown when the copying operation fails.</exception>
+        </member>
         <member name="M:PstToolkit.PstFile.Flush">
             <summary>
             Flushes any pending changes to disk.
@@ -339,6 +552,14 @@
             Releases the unmanaged resources used by the PstFile and optionally releases the managed resources.
             </summary>
             <param name="disposing">true to release both managed and unmanaged resources; false to release only unmanaged resources.</param>
+        </member>
+        <member name="M:PstToolkit.PstFile.GenerateNodeId(System.UInt16,System.UInt16)">
+            <summary>
+            Generates a node ID using the specified type and ID components.
+            </summary>
+            <param name="nodeType">The node type.</param>
+            <param name="id">The ID component.</param>
+            <returns>A combined node ID.</returns>
         </member>
         <member name="T:PstToolkit.PstFolder">
             <summary>
@@ -984,6 +1205,13 @@
             </summary>
             <param name="propertyId">The property ID.</param>
             <returns>The DateTime value if found, or null if not found.</returns>
+        </member>
+        <member name="M:PstToolkit.Utils.PropertyContext.GetBinary(System.UInt16)">
+            <summary>
+            Gets a binary property.
+            </summary>
+            <param name="propertyId">The property ID.</param>
+            <returns>The binary data as a byte array if found, or null if not found.</returns>
         </member>
         <member name="M:PstToolkit.Utils.PropertyContext.GetBoolean(System.UInt16)">
             <summary>

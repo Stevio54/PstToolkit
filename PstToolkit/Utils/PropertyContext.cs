@@ -109,6 +109,41 @@ namespace PstToolkit.Utils
             
             return null;
         }
+        
+        /// <summary>
+        /// Gets a binary property.
+        /// </summary>
+        /// <param name="propertyId">The property ID.</param>
+        /// <returns>The binary data as a byte array if found, or null if not found.</returns>
+        public byte[]? GetBinary(ushort propertyId)
+        {
+            EnsurePropertiesLoaded();
+            
+            uint key = MakePropertyId(propertyId, PropertyType.PT_BINARY);
+            if (_properties!.TryGetValue(key, out var value))
+            {
+                if (value is byte[] byteArray)
+                {
+                    return byteArray;
+                }
+                
+                // Try converting from string to byte array if it's stored as a string
+                if (value is string strValue)
+                {
+                    try
+                    {
+                        return Convert.FromBase64String(strValue);
+                    }
+                    catch
+                    {
+                        // If not base64, try using UTF8 encoding
+                        return Encoding.UTF8.GetBytes(strValue);
+                    }
+                }
+            }
+            
+            return null;
+        }
 
         /// <summary>
         /// Gets a boolean property.

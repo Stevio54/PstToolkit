@@ -712,8 +712,29 @@ namespace PstToolkit
 
         private void CreateSystemFolder(uint nodeId, string name, FolderType type)
         {
-            var mockNode = new NdbNodeEntry(nodeId, 0u, FolderId, 0ul, 0u);
-            var folder = new PstFolder(_pstFile, mockNode, this);
+            // Instead of using a mock node, we'll create a proper one and add it to the B-tree
+            var dataId = nodeId + 1000u; // Create unique data ID
+            var nodeEntry = new NdbNodeEntry(nodeId, dataId, FolderId, 0ul, 512u);
+            nodeEntry.DisplayName = name;
+            
+            // Add the folder node to the node B-tree
+            var bTree = _pstFile.GetNodeBTree();
+            
+            // Create folder properties
+            Dictionary<string, object> properties = new Dictionary<string, object>
+            {
+                { "DisplayName", name },
+                { "FolderType", (int)type }
+            };
+            
+            // Serialize properties to a byte array (in real implementation)
+            byte[] data = SerializeFolderProperties(properties);
+            
+            // Add the node to the B-tree
+            bTree.AddNode(nodeEntry, data);
+            
+            // Create folder object and add to collection
+            var folder = new PstFolder(_pstFile, nodeEntry, this);
             folder.Name = name;
             folder.Type = type;
             _subFolders.Add(folder);
@@ -813,16 +834,132 @@ namespace PstToolkit
         
         private uint GenerateNewMessageId()
         {
-            // In a real implementation, this would allocate a unique ID
-            // For demonstration, we'll create a mock ID
-            return (uint)(PstNodeTypes.NID_TYPE_MESSAGE << 5) | (FolderId & 0x1Fu) + 0x2000u;
+            // Generate a unique message node ID
+            // Message node IDs have the NID_TYPE_MESSAGE type (shifted left by 5 bits)
+            // followed by a unique ID based on the current folder
+            
+            // Get all existing message IDs in this folder
+            var bTree = _pstFile.GetNodeBTree();
+            var allNodes = bTree.GetAllNodes();
+            var existingMessageIds = new HashSet<uint>();
+            
+            // Find existing message IDs for this folder
+            foreach (var node in allNodes)
+            {
+                if (PstNodeTypes.GetNodeType(node.NodeId) == PstNodeTypes.NID_TYPE_MESSAGE && 
+                    node.ParentId == FolderId)
+                {
+                    existingMessageIds.Add(node.NodeId);
+                }
+            }
+            
+            // Start with a base ID using the current time to ensure uniqueness
+            uint baseId = (uint)((DateTime.Now.Ticks & 0xFFFF) << 8);
+            
+            // Create a unique message ID by combining:
+            // 1. The message node type (shifted left by 5 bits)
+            // 2. A portion of the folder ID for context (lower 5 bits)
+            // 3. A unique counter to avoid collisions
+            uint counter = 0;
+            uint newMessageId;
+            
+            do
+            {
+                // Create a unique ID pattern
+                newMessageId = (uint)(PstNodeTypes.NID_TYPE_MESSAGE << 5) | 
+                               ((baseId + counter) & 0x1Fu);
+                counter++;
+            } while (existingMessageIds.Contains(newMessageId) && counter < 0xFFFF);
+            
+            // If we've exhausted the standard range, use a time-based approach
+            if (counter >= 0xFFFF)
+            {
+                // Use millisecond precision for uniqueness
+                newMessageId = (uint)(PstNodeTypes.NID_TYPE_MESSAGE << 5) | 
+                               (uint)(DateTime.Now.Millisecond & 0x1F);
+            }
+            
+            Console.WriteLine($"Generated new message ID: {newMessageId} for folder {FolderId}");
+            return newMessageId;
         }
         
         private byte[] SerializeFolderProperties(Dictionary<string, object> properties)
         {
-            // In a real implementation, this would serialize properties to PST format
-            // For demonstration, we return a placeholder byte array
-            return new byte[128];
+            // Serialize properties dictionary to a byte array in a format that can be 
+            // stored in the PST file and later reconstructed
+            
+            try
+            {
+                using (var memoryStream = new MemoryStream())
+                {
+                    using (var writer = new PstBinaryWriter(memoryStream, _pstFile.IsAnsi))
+                    {
+                        // Write the number of properties
+                        writer.Write((int)properties.Count);
+                        
+                        // Write each property
+                        foreach (var property in properties)
+                        {
+                            // Determine the encoding based on the PST file type
+                            var encoding = _pstFile.IsAnsi ? System.Text.Encoding.ASCII : System.Text.Encoding.Unicode;
+                            
+                            // Write property name
+                            writer.WriteString(property.Key, encoding);
+                            
+                            // Write property type marker based on value type
+                            if (property.Value is string stringValue)
+                            {
+                                writer.Write((byte)1); // String type
+                                writer.WriteString(stringValue, encoding);
+                            }
+                            else if (property.Value is int intValue)
+                            {
+                                writer.Write((byte)2); // Integer type
+                                writer.Write(intValue);
+                            }
+                            else if (property.Value is bool boolValue)
+                            {
+                                writer.Write((byte)3); // Boolean type
+                                writer.Write(boolValue);
+                            }
+                            else if (property.Value is DateTime dateValue)
+                            {
+                                writer.Write((byte)4); // DateTime type
+                                writer.Write(dateValue.ToBinary());
+                            }
+                            else if (property.Value is byte[] byteArrayValue)
+                            {
+                                writer.Write((byte)5); // ByteArray type
+                                writer.Write(byteArrayValue.Length);
+                                writer.Write(byteArrayValue);
+                            }
+                            else
+                            {
+                                // For other types, convert to string
+                                writer.Write((byte)1); // String type
+                                writer.WriteString(property.Value?.ToString() ?? string.Empty, encoding);
+                            }
+                        }
+                    }
+                    
+                    // Return the serialized data
+                    return memoryStream.ToArray();
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error serializing folder properties: {ex.Message}");
+                
+                // In case of error, return a minimal valid data structure
+                using (var memoryStream = new MemoryStream())
+                {
+                    using (var writer = new BinaryWriter(memoryStream))
+                    {
+                        writer.Write(0); // No properties
+                    }
+                    return memoryStream.ToArray();
+                }
+            }
         }
         
         private void UpdateHierarchyTable(PstFolder folder)

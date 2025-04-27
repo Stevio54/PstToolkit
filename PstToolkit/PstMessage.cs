@@ -848,17 +848,112 @@ namespace PstToolkit
         {
             try
             {
-                // In a real implementation, this would:
-                // 1. Find the attachment node
-                // 2. Read the attachment data
+                // Find the attachment node in the PST file
+                var attachmentNode = _pstFile.GetNodeEntry(attachmentId);
+                if (attachmentNode == null)
+                {
+                    throw new PstException($"Attachment node {attachmentId:X} not found");
+                }
                 
-                // For this implementation, we'll generate some sample content
-                string content = $"This is the content of attachment {attachmentId}.\r\n";
-                return Encoding.UTF8.GetBytes(content);
+                // Get the property context for the attachment
+                var propContext = new PropertyContext(_pstFile, attachmentNode);
+                
+                // Get the attachment method (embedded, referenced, etc.)
+                int attachMethod = propContext.GetInt32((ushort)PstStructure.PropertyIds.PidTagAttachMethod) ?? 1; // Default to embedded
+                
+                // For embedded attachments (ATTACH_BY_VALUE, method=1), the data is in the node itself
+                if (attachMethod == 1)
+                {
+                    // Get the data from the node's data block
+                    if (attachmentNode.DataSize > 0 && attachmentNode.DataOffset > 0)
+                    {
+                        return _pstFile.ReadBlock(attachmentNode.DataOffset, attachmentNode.DataSize);
+                    }
+                    
+                    // If no data in the node, look for separate attachment data node
+                    // Calculate the attachment data node ID based on this attachment's node ID
+                    ushort attachNid = (ushort)(attachmentId & 0x1F);
+                    uint attachDataNodeId = (uint)(PstNodeTypes.NID_TYPE_ATTACHMENT_DATA << 5) | attachNid;
+                    
+                    // Find the attachment data node
+                    var attachDataNode = _pstFile.GetNodeEntry(attachDataNodeId);
+                    if (attachDataNode != null && attachDataNode.DataSize > 0 && attachDataNode.DataOffset > 0)
+                    {
+                        return _pstFile.ReadBlock(attachDataNode.DataOffset, attachDataNode.DataSize);
+                    }
+                    
+                    // If we still have no data, check for the PidTagAttachDataBinary property
+                    var attachData = propContext.GetBinary((ushort)PstStructure.PropertyIds.PidTagAttachDataBinary);
+                    if (attachData != null && attachData.Length > 0)
+                    {
+                        return attachData;
+                    }
+                }
+                // For referenced attachments (ATTACH_BY_REFERENCE, method=2 or method=3), the data is in a separate file
+                else if (attachMethod == 2 || attachMethod == 3)
+                {
+                    // Get the attachment pathname from the property
+                    var pathName = propContext.GetString((ushort)PstStructure.PropertyIds.PidTagAttachPathname);
+                    if (!string.IsNullOrEmpty(pathName) && File.Exists(pathName))
+                    {
+                        return File.ReadAllBytes(pathName);
+                    }
+                    
+                    // If path not found, check PidTagAttachLongPathname
+                    pathName = propContext.GetString((ushort)PstStructure.PropertyIds.PidTagAttachLongPathname);
+                    if (!string.IsNullOrEmpty(pathName) && File.Exists(pathName))
+                    {
+                        return File.ReadAllBytes(pathName);
+                    }
+                }
+                // For OLE attachments (ATTACH_EMBEDDED_MSG, method=5), the attachment is another message
+                else if (attachMethod == 5)
+                {
+                    // Calculate the embedded message node ID
+                    ushort attachNid = (ushort)(attachmentId & 0x1F);
+                    uint embeddedMsgNodeId = (uint)(PstNodeTypes.NID_TYPE_ATTACHMENT_OBJECT << 5) | attachNid;
+                    
+                    // Find the embedded message node
+                    var embeddedMsgNode = _pstFile.GetNodeEntry(embeddedMsgNodeId);
+                    if (embeddedMsgNode != null)
+                    {
+                        // Create a PstMessage for the embedded message
+                        var embeddedMsg = new PstMessage(_pstFile, embeddedMsgNode);
+                        
+                        // Get the raw content of the embedded message
+                        return embeddedMsg.GetRawContent();
+                    }
+                }
+                
+                // If all above methods failed, look for a data blob associated with this attachment
+                var dataBlob = propContext.GetBinary((ushort)PstStructure.PropertyIds.PidTagAttachDataObject);
+                if (dataBlob != null && dataBlob.Length > 0)
+                {
+                    return dataBlob;
+                }
+                
+                // If we still can't find the data, look for other related property types
+                var dataIds = new uint[]
+                {
+                    PstStructure.PropertyIds.PidTagAttachData,
+                    PstStructure.PropertyIds.PidTagAttachDataBinary
+                };
+                
+                foreach (var propId in dataIds)
+                {
+                    var data = propContext.GetBinary((ushort)propId);
+                    if (data != null && data.Length > 0)
+                    {
+                        return data;
+                    }
+                }
+                
+                // If we get here and can't find any data, throw an exception
+                throw new PstException($"No attachment data found for attachment ID {attachmentId:X}");
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not PstException)
             {
-                throw new PstException($"Failed to load attachment content for ID {attachmentId}", ex);
+                throw new PstException($"Failed to load attachment content for ID {attachmentId:X}", ex);
             }
         }
 
