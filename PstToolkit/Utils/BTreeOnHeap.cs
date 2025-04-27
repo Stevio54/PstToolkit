@@ -188,11 +188,19 @@ namespace PstToolkit.Utils
             // For now, we'll just return the nodes we have in cache plus any special system nodes
             var allNodes = new List<NdbNodeEntry>(_nodeCache.Values);
             
-            Console.WriteLine($"GetAllNodes: Found {_nodeCache.Count} nodes in cache");
-            
-            foreach (var key in _nodeCache.Keys)
+            // Only log in debug mode or for small node counts
+            if (_nodeCache.Count < 100)
             {
-                Console.WriteLine($"  - Node ID: {key}, Parent ID: {_nodeCache[key].ParentId}");
+                Console.WriteLine($"GetAllNodes: Found {_nodeCache.Count} nodes in cache");
+                
+                // Only show detailed node info for very small caches to avoid performance hit
+                if (_nodeCache.Count < 20)
+                {
+                    foreach (var key in _nodeCache.Keys)
+                    {
+                        Console.WriteLine($"  - Node ID: {key}, Parent ID: {_nodeCache[key].ParentId}");
+                    }
+                }
             }
             
             // Add well-known system nodes that might not be in the cache
@@ -200,7 +208,11 @@ namespace PstToolkit.Utils
             var rootFolder = FindNodeByNid(rootFolderId);
             if (rootFolder != null && !_nodeCache.ContainsKey(rootFolderId))
             {
-                Console.WriteLine($"Adding root folder node {rootFolderId} to results");
+                // Only log for smaller node caches
+                if (_nodeCache.Count < 100)
+                {
+                    Console.WriteLine($"Adding root folder node {rootFolderId} to results");
+                }
                 allNodes.Add(rootFolder);
             }
             

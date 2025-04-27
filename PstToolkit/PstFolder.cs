@@ -750,17 +750,35 @@ namespace PstToolkit
                 var bTree = _pstFile.GetNodeBTree();
                 var allNodes = bTree.GetAllNodes();
                 
-                Console.WriteLine($"Looking for messages in folder: {Name} (ID: {FolderId})");
-                Console.WriteLine($"Scanning {allNodes.Count} nodes for messages with parent ID {FolderId}");
+                // Only log detailed messages for small folders/files
+                bool verboseLogging = allNodes.Count < 100;
                 
-                // First, search for message nodes that have this folder as parent
-                int realMessagesFound = 0;
-                foreach (var node in allNodes)
+                if (verboseLogging)
                 {
-                    // Check if the node is a message type and has this folder as its parent
-                    if (node.NodeType == PstNodeTypes.NID_TYPE_MESSAGE && node.ParentId == FolderId)
+                    Console.WriteLine($"Looking for messages in folder: {Name} (ID: {FolderId})");
+                    Console.WriteLine($"Scanning {allNodes.Count} nodes for messages with parent ID {FolderId}");
+                }
+                
+                // First, gather all message nodes that belong to this folder
+                var messageNodes = allNodes
+                    .Where(node => node.NodeType == PstNodeTypes.NID_TYPE_MESSAGE && node.ParentId == FolderId)
+                    .ToList();
+                
+                // Process in batches for better performance with large message sets
+                const int batchSize = 50;
+                int realMessagesFound = 0;
+                
+                for (int i = 0; i < messageNodes.Count; i++)
+                {
+                    var node = messageNodes[i];
+                    
+                    try
                     {
-                        Console.WriteLine($"Found message node {node.NodeId} with parent {node.ParentId}, name: {node.DisplayName ?? "(no name)"}");
+                        // Only log details for the first few messages or small message sets
+                        if (verboseLogging && (realMessagesFound < 10 || messageNodes.Count < 20))
+                        {
+                            Console.WriteLine($"Found message node {node.NodeId} with parent {node.ParentId}, name: {node.DisplayName ?? "(no name)"}");
+                        }
                         
                         // Create a message object from the node
                         var message = new PstMessage(_pstFile, node);
@@ -768,6 +786,20 @@ namespace PstToolkit
                         // Add it to the messages list
                         _messages.Add(message);
                         realMessagesFound++;
+                        
+                        // For large message sets, provide periodic status updates
+                        if (messageNodes.Count > batchSize*2 && realMessagesFound % batchSize == 0)
+                        {
+                            Console.WriteLine($"Processed {realMessagesFound}/{messageNodes.Count} messages in folder '{Name}'...");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        // Only log first few errors to avoid console spam
+                        if (realMessagesFound < 5)
+                        {
+                            Console.WriteLine($"Error loading message {node.NodeId}: {ex.Message}");
+                        }
                     }
                 }
                 

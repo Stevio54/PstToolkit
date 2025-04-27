@@ -475,6 +475,7 @@
         <member name="T:PstToolkit.PstFile">
             <summary>
             Represents a PST file that can be read from or written to.
+            Includes optimizations for handling large PST files.
             </summary>
         </member>
         <member name="P:PstToolkit.PstFile.RootFolder">
@@ -560,6 +561,33 @@
             <param name="nodeType">The node type.</param>
             <param name="id">The ID component.</param>
             <returns>A combined node ID.</returns>
+        </member>
+        <member name="M:PstToolkit.PstFile.ReadBlock(System.UInt64,System.UInt32)">
+            <summary>
+            Reads a block of data from the PST file at the specified offset and size.
+            Optimized for handling large blocks efficiently.
+            </summary>
+            <param name="offset">The offset in the file to read from.</param>
+            <param name="size">The size of the block to read.</param>
+            <returns>The data as a byte array.</returns>
+        </member>
+        <member name="M:PstToolkit.PstFile.ReadBlockAsync(System.UInt64,System.UInt32,System.Threading.CancellationToken)">
+            <summary>
+            Asynchronously reads a block of data from the PST file at the specified offset and size.
+            Optimized for handling large blocks efficiently.
+            </summary>
+            <param name="offset">The offset in the file to read from.</param>
+            <param name="size">The size of the block to read.</param>
+            <param name="cancellationToken">Optional cancellation token for the async operation.</param>
+            <returns>The data as a byte array.</returns>
+        </member>
+        <member name="M:PstToolkit.PstFile.WriteBlock(System.UInt64,System.Byte[])">
+            <summary>
+            Writes a block of data to the PST file at the specified offset.
+            Optimized for handling large blocks efficiently.
+            </summary>
+            <param name="offset">The offset in the file to write to.</param>
+            <param name="data">The data to write.</param>
         </member>
         <member name="T:PstToolkit.PstFolder">
             <summary>
@@ -1250,7 +1278,7 @@
         </member>
         <member name="T:PstToolkit.Utils.PstBinaryReader">
             <summary>
-            Binary reader with PST-specific functionality.
+            Binary reader with PST-specific functionality, optimized for large files.
             </summary>
         </member>
         <member name="M:PstToolkit.Utils.PstBinaryReader.#ctor(System.IO.Stream,System.Boolean)">
@@ -1262,7 +1290,7 @@
         </member>
         <member name="M:PstToolkit.Utils.PstBinaryReader.ReadString(System.Int32,System.Text.Encoding)">
             <summary>
-            Reads a variable-length string from the current stream.
+            Reads a variable-length string from the current stream with optimized memory usage.
             </summary>
             <param name="length">The length of the string in bytes.</param>
             <param name="encoding">The character encoding to use.</param>
@@ -1270,7 +1298,7 @@
         </member>
         <member name="M:PstToolkit.Utils.PstBinaryReader.ReadNullTerminatedString(System.Text.Encoding)">
             <summary>
-            Reads a null-terminated string from the current stream.
+            Reads a null-terminated string from the current stream with optimized memory usage.
             </summary>
             <param name="encoding">The character encoding to use.</param>
             <returns>The string that was read.</returns>
@@ -1296,9 +1324,17 @@
         </member>
         <member name="M:PstToolkit.Utils.PstBinaryReader.ReadBytesAt(System.Int64,System.Int32)">
             <summary>
-            Reads a specified number of bytes from the stream, starting at a specified position.
+            Reads a specified number of bytes from the stream, starting at a specified position,
+            with optimizations for large data blocks.
             </summary>
             <param name="position">The position in the stream to begin reading from.</param>
+            <param name="count">The number of bytes to read.</param>
+            <returns>A byte array containing the read bytes.</returns>
+        </member>
+        <member name="M:PstToolkit.Utils.PstBinaryReader.ReadLargeBlock(System.Int32)">
+            <summary>
+            Reads a large block of data from the stream efficiently.
+            </summary>
             <param name="count">The number of bytes to read.</param>
             <returns>A byte array containing the read bytes.</returns>
         </member>

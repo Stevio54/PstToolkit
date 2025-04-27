@@ -2,6 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
+using System.Runtime.CompilerServices;
+using System.Threading;
+using System.Threading.Tasks;
 using PstToolkit.Exceptions;
 using PstToolkit.Formats;
 using PstToolkit.Utils;
@@ -10,6 +13,7 @@ namespace PstToolkit
 {
     /// <summary>
     /// Represents a PST file that can be read from or written to.
+    /// Includes optimizations for handling large PST files.
     /// </summary>
     public class PstFile : IDisposable
     {
@@ -525,17 +529,108 @@ namespace PstToolkit
             return _nodeBTree;
         }
 
+        /// <summary>
+        /// Reads a block of data from the PST file at the specified offset and size.
+        /// Optimized for handling large blocks efficiently.
+        /// </summary>
+        /// <param name="offset">The offset in the file to read from.</param>
+        /// <param name="size">The size of the block to read.</param>
+        /// <returns>The data as a byte array.</returns>
         internal byte[] ReadBlock(ulong offset, uint size)
         {
             if (_fileStream == null)
                 throw new PstCorruptedException("File stream is not initialized");
                 
+            if (size == 0)
+                return Array.Empty<byte>();
+                
             _fileStream.Position = (long)offset;
-            var buffer = new byte[size];
-            _fileStream.Read(buffer, 0, (int)size);
-            return buffer;
+            
+            const int chunkSize = 8192; // 8KB chunks for efficient reading
+            
+            // For small blocks, use a simple read
+            if (size <= chunkSize)
+            {
+                var buffer = new byte[size];
+                _fileStream.Read(buffer, 0, (int)size);
+                return buffer;
+            }
+            
+            // For large blocks, read in chunks for better performance and memory usage
+            var result = new byte[size];
+            int bytesRead = 0;
+            int remaining = (int)size;
+            
+            while (remaining > 0)
+            {
+                int toRead = Math.Min(chunkSize, remaining);
+                int read = _fileStream.Read(result, bytesRead, toRead);
+                
+                if (read == 0)
+                    break; // End of file
+                    
+                bytesRead += read;
+                remaining -= read;
+            }
+            
+            return result;
+        }
+        
+        /// <summary>
+        /// Asynchronously reads a block of data from the PST file at the specified offset and size.
+        /// Optimized for handling large blocks efficiently.
+        /// </summary>
+        /// <param name="offset">The offset in the file to read from.</param>
+        /// <param name="size">The size of the block to read.</param>
+        /// <param name="cancellationToken">Optional cancellation token for the async operation.</param>
+        /// <returns>The data as a byte array.</returns>
+        internal async Task<byte[]> ReadBlockAsync(ulong offset, uint size, CancellationToken cancellationToken = default)
+        {
+            if (_fileStream == null)
+                throw new PstCorruptedException("File stream is not initialized");
+                
+            if (size == 0)
+                return Array.Empty<byte>();
+                
+            _fileStream.Position = (long)offset;
+            
+            const int chunkSize = 8192; // 8KB chunks for efficient reading
+            
+            // For small blocks, use a simple read
+            if (size <= chunkSize)
+            {
+                var buffer = new byte[size];
+                await _fileStream.ReadAsync(buffer, 0, (int)size, cancellationToken).ConfigureAwait(false);
+                return buffer;
+            }
+            
+            // For large blocks, read in chunks for better performance and memory usage
+            var result = new byte[size];
+            int bytesRead = 0;
+            int remaining = (int)size;
+            
+            while (remaining > 0 && !cancellationToken.IsCancellationRequested)
+            {
+                int toRead = Math.Min(chunkSize, remaining);
+                int read = await _fileStream.ReadAsync(result, bytesRead, toRead, cancellationToken).ConfigureAwait(false);
+                
+                if (read == 0)
+                    break; // End of file
+                    
+                bytesRead += read;
+                remaining -= read;
+            }
+            
+            cancellationToken.ThrowIfCancellationRequested();
+            return result;
         }
 
+        /// <summary>
+        /// Writes a block of data to the PST file at the specified offset.
+        /// Optimized for handling large blocks efficiently.
+        /// </summary>
+        /// <param name="offset">The offset in the file to write to.</param>
+        /// <param name="data">The data to write.</param>
         internal void WriteBlock(ulong offset, byte[] data)
         {
             if (_isReadOnly)
@@ -543,9 +638,33 @@ namespace PstToolkit
                 
             if (_fileStream == null)
                 throw new PstCorruptedException("File stream is not initialized");
+            
+            if (data == null || data.Length == 0)
+                return;
                 
             _fileStream.Position = (long)offset;
-            _fileStream.Write(data, 0, data.Length);
+            
+            const int chunkSize = 8192; // 8KB chunks for efficient writing
+            
+            // For small blocks, use a simple write
+            if (data.Length <= chunkSize)
+            {
+                _fileStream.Write(data, 0, data.Length);
+                return;
+            }
+            
+            // For large blocks, write in chunks for better performance
+            int written = 0;
+            int remaining = data.Length;
+            
+            while (remaining > 0)
+            {
+                int toWrite = Math.Min(chunkSize, remaining);
+                _fileStream.Write(data, written, toWrite);
+                
+                written += toWrite;
+                remaining -= toWrite;
+            }
         }
 
         internal void RegisterFolder(uint folderId, PstFolder folder)
