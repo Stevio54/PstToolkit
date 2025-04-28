@@ -278,6 +278,13 @@
             <param name="id">The node-specific ID.</param>
             <returns>A new node ID.</returns>
         </member>
+        <member name="M:PstToolkit.Formats.PstNodeTypes.GetDataBlockId(System.UInt32)">
+            <summary>
+            Gets the data block ID for a node ID.
+            </summary>
+            <param name="nodeId">The node ID.</param>
+            <returns>The data block ID.</returns>
+        </member>
         <member name="T:PstToolkit.FilterLogic">
             <summary>
             Defines the logical operator to use when combining multiple filters.
@@ -539,6 +546,14 @@
             <param name="cancellationToken">Optional cancellation token for the async operation.</param>
             <returns>The data as a byte array.</returns>
         </member>
+        <member name="M:PstToolkit.PstFile.AllocateBlock(System.UInt32,System.UInt32)">
+            <summary>
+            Allocates a block of storage in the PST file for the specified data block ID.
+            </summary>
+            <param name="blockId">The block ID to allocate space for.</param>
+            <param name="size">The size of the block to allocate.</param>
+            <returns>The offset in the file where the block was allocated.</returns>
+        </member>
         <member name="M:PstToolkit.PstFile.WriteBlock(System.UInt64,System.Byte[])">
             <summary>
             Writes a block of data to the PST file at the specified offset.
@@ -714,6 +729,13 @@
             </summary>
             <param name="folderType">The type of system folder to find.</param>
             <returns>The system folder if found, or null if not found.</returns>
+        </member>
+        <member name="M:PstToolkit.PstFolder.ParseContentsTable(System.Byte[])">
+            <summary>
+            Parses the contents table binary data to extract message IDs.
+            </summary>
+            <param name="contentsData">The binary contents table data.</param>
+            <returns>A list of message node IDs.</returns>
         </member>
         <member name="T:PstToolkit.PstMessage">
             <summary>
@@ -1043,6 +1065,11 @@
             <param name="rootNodeId">The root node ID of the B-tree.</param>
             <returns>A new BTreeOnHeap instance.</returns>
         </member>
+        <member name="M:PstToolkit.Utils.BTreeOnHeap.EnsureBTreeFullyTraversed">
+            <summary>
+            Ensures the B-tree has been fully traversed and all nodes are cached.
+            </summary>
+        </member>
         <member name="M:PstToolkit.Utils.BTreeOnHeap.AddNode(System.UInt32,System.UInt32,System.UInt32,System.Byte[])">
             <summary>
             Adds a new node to the B-tree.
@@ -1072,12 +1099,60 @@
             <param name="displayName">The display name for the node (for folders).</param>
             <returns>The new node entry.</returns>
         </member>
+        <member name="M:PstToolkit.Utils.BTreeOnHeap.GetNodeById(System.UInt32)">
+            <summary>
+            Gets a node by its ID.
+            </summary>
+            <param name="nodeId">The node ID to look for.</param>
+            <returns>The node entry, or null if not found.</returns>
+        </member>
+        <member name="M:PstToolkit.Utils.BTreeOnHeap.GetNodeData(PstToolkit.Utils.NdbNodeEntry)">
+            <summary>
+            Gets the binary data associated with a node.
+            </summary>
+            <param name="node">The node to get data for.</param>
+            <returns>The binary data, or null if not found.</returns>
+        </member>
+        <member name="M:PstToolkit.Utils.BTreeOnHeap.UpdateNode(PstToolkit.Utils.NdbNodeEntry)">
+            <summary>
+            Updates an existing node in the B-tree.
+            </summary>
+            <param name="node">The node to update.</param>
+            <returns>True if the update was successful, false otherwise.</returns>
+        </member>
+        <member name="M:PstToolkit.Utils.BTreeOnHeap.AllocateSpace(System.Int32)">
+            <summary>
+            Allocates space for data in the heap.
+            </summary>
+            <param name="dataLength">The length of the data to allocate space for.</param>
+            <returns>The offset where the data should be written.</returns>
+        </member>
+        <member name="M:PstToolkit.Utils.BTreeOnHeap.WriteDataToOffset(System.UInt64,System.Byte[])">
+            <summary>
+            Writes data to the specified offset in the PST file.
+            </summary>
+            <param name="offset">The offset where to write the data.</param>
+            <param name="data">The data to write.</param>
+        </member>
+        <member name="M:PstToolkit.Utils.BTreeOnHeap.UpdateBTreeStructure(System.UInt32)">
+            <summary>
+            Updates the B-tree structure to include a new node.
+            </summary>
+            <param name="nodeId">The node ID that was added.</param>
+        </member>
         <member name="M:PstToolkit.Utils.BTreeOnHeap.RemoveNode(System.UInt32)">
             <summary>
             Removes a node from the B-tree.
             </summary>
             <param name="nodeId">The node ID to remove.</param>
             <returns>True if the node was removed, false if it wasn't found.</returns>
+        </member>
+        <member name="M:PstToolkit.Utils.BTreeOnHeap.ReadBTreeNode(System.UInt32)">
+            <summary>
+            Reads a B-tree node and all its children, populating the node cache.
+            </summary>
+            <param name="nodeId">The node ID to read.</param>
+            <returns>The node entry if found and read successfully, or null if not found.</returns>
         </member>
         <member name="T:PstToolkit.Utils.NdbNodeEntry">
             <summary>

@@ -135,5 +135,17 @@ namespace PstToolkit.Formats
         {
             return (uint)((type & 0x1F) << 5) | (uint)(id & 0x1F);
         }
+        
+        /// <summary>
+        /// Gets the data block ID for a node ID.
+        /// </summary>
+        /// <param name="nodeId">The node ID.</param>
+        /// <returns>The data block ID.</returns>
+        public static uint GetDataBlockId(uint nodeId)
+        {
+            // In PST format, data block IDs are typically derived from the node ID
+            // by performing a specific calculation based on the PST format spec
+            return nodeId | 0x8000u; // Set high bit to distinguish data blocks
+        }
     }
 }

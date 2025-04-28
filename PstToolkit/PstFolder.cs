@@ -189,10 +189,32 @@ namespace PstToolkit
 
             try
             {
-                // Generate a new node ID for the folder
-                // In a real implementation, this would allocate a unique ID
-                // For demonstration, we'll create a mock ID
-                uint newFolderId = GenerateNewFolderId();
+                // Generate a proper node ID for the folder
+                // Get the node type for folders
+                ushort folderNodeType = PstNodeTypes.NID_TYPE_FOLDER;
+                
+                // Find the next available folder ID by checking existing folders
+                uint maxFolderId = 0;
+                var bTree = _pstFile.GetNodeBTree();
+                var allNodes = bTree.GetAllNodes();
+                var existingFolders = allNodes
+                    .Where(n => PstNodeTypes.GetNodeType(n.NodeId) == PstNodeTypes.NID_TYPE_FOLDER)
+                    .ToList();
+                
+                if (existingFolders.Any())
+                {
+                    // Extract the index part from each folder ID and find the highest
+                    maxFolderId = existingFolders.Max(f => f.NodeId & 0x1F);
+                }
+                
+                ushort nextFolderId = (ushort)(maxFolderId + 1);
+                if (nextFolderId > 0x1F) // Ensure we stay within the 5-bit index limit
+                {
+                    nextFolderId = 1; // Wrap around if needed
+                }
+                
+                // Create the final node ID by combining the node type and index
+                uint newFolderId = PstNodeTypes.CreateNodeId(folderNodeType, nextFolderId);
                 
                 // Create folder properties
                 Dictionary<string, object> properties = new Dictionary<string, object>
@@ -206,7 +228,6 @@ namespace PstToolkit
                 
                 // Create a new node entry for the folder
                 byte[] folderData = SerializeFolderProperties(properties);
-                var bTree = _pstFile.GetNodeBTree();
                 var nodeEntry = bTree.AddNode(newFolderId, 0, FolderId, folderData, folderName);
                 
                 // Create a new folder object
@@ -490,9 +511,21 @@ namespace PstToolkit
                 // Remove from current parent's hierarchy table
                 ParentFolder.RemoveFromHierarchyTable(this);
                 
-                // Update the node's parent ID
-                // In a real implementation, this would update the node entry in the PST file
+                // Update the node's parent ID in the PST file structure
                 var bTree = _pstFile.GetNodeBTree();
+                
+                // Get the current node entry
+                var nodeEntry = bTree.GetNodeById(FolderId);
+                if (nodeEntry == null)
+                {
+                    throw new PstException($"Failed to find folder node {FolderId} in B-tree");
+                }
+                
+                // Update the parent ID in the node entry
+                nodeEntry.ParentId = targetFolder.FolderId;
+                
+                // Update the node in the B-tree
+                bTree.UpdateNode(nodeEntry);
                 
                 // Remove from current parent's subfolder list if loaded
                 if (ParentFolder._subFoldersLoaded)
@@ -833,12 +866,34 @@ namespace PstToolkit
                 {
                     Console.WriteLine($"No messages found directly. Checking contents table for folder '{Name}'");
                     
-                    // In a real implementation, this would:
-                    // 1. Read the contents table rows
-                    // 2. Extract the message node IDs
-                    // 3. Load each message
-                    
-                    // We'll leave this empty for now, as we're using the real nodes from the cache
+                    // Read the contents table rows and load messages
+                    var contentsData = bTree.GetNodeData(contentsTableNode);
+                    if (contentsData != null && contentsData.Length > 0)
+                    {
+                        // Parse the content table data to extract message IDs
+                        var messageIds = ParseContentsTable(contentsData);
+                        
+                        Console.WriteLine($"Found {messageIds.Count} messages in contents table for folder '{Name}'");
+                        
+                        // Load each message by its ID
+                        foreach (var messageId in messageIds)
+                        {
+                            try 
+                            {
+                                var messageNode = bTree.GetNodeById(messageId);
+                                if (messageNode != null)
+                                {
+                                    var message = new PstMessage(_pstFile, messageNode);
+                                    _messages.Add(message);
+                                    realMessagesFound++;
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                Console.WriteLine($"Error loading message {messageId}: {ex.Message}");
+                            }
+                        }
+                    }
                 }
                 
                 _messagesLoaded = true;
@@ -1349,8 +1404,7 @@ namespace PstToolkit
         
         private void UpdateHasSubFoldersProperty()
         {
-            // In a real implementation, this would update the HasSubFolders property
-            // For this demonstration, we'll just update the property in memory
+            // Update the HasSubFolders property in the folder's property context and PST file
             
             // Set the property in the property context
             _propertyContext.SetProperty(
@@ -1359,8 +1413,101 @@ namespace PstToolkit
                 HasSubFolders
             );
             
+            // Also update the node metadata in the B-tree
+            try
+            {
+                // Get the node for this folder
+                var bTree = _pstFile.GetNodeBTree();
+                var folderNode = bTree.GetNodeById(FolderId);
+                
+                if (folderNode != null)
+                {
+                    // Set the HasSubFolders metadata
+                    folderNode.SetMetadata("HAS_SUBFOLDERS", HasSubFolders.ToString());
+                    
+                    // Update the node in the B-tree
+                    bTree.UpdateNode(folderNode);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Warning: Error updating HasSubFolders property: {ex.Message}");
+            }
+            
             // Save the changes
             _propertyContext.Save();
+        }
+        
+        /// <summary>
+        /// Parses the contents table binary data to extract message IDs.
+        /// </summary>
+        /// <param name="contentsData">The binary contents table data.</param>
+        /// <returns>A list of message node IDs.</returns>
+        private List<uint> ParseContentsTable(byte[] contentsData)
+        {
+            List<uint> messageIds = new List<uint>();
+            
+            try
+            {
+                using (var memoryStream = new MemoryStream(contentsData))
+                using (var reader = new BinaryReader(memoryStream))
+                {
+                    // Read the count of entries in the contents table
+                    int entryCount = 0;
+                    
+                    // Attempt to read entry count
+                    if (memoryStream.Length >= 4)
+                    {
+                        entryCount = reader.ReadInt32();
+                    }
+                    
+                    // Validate entry count is reasonable
+                    if (entryCount < 0 || entryCount > 100000) // Sanity check
+                    {
+                        Console.WriteLine($"Warning: Invalid content table entry count: {entryCount}, using safe value");
+                        entryCount = Math.Min(Math.Max(0, (int)(memoryStream.Length - 4) / 8), 1000);
+                    }
+                    
+                    // Read each entry
+                    for (int i = 0; i < entryCount && memoryStream.Position + 4 <= memoryStream.Length; i++)
+                    {
+                        // Read a message ID
+                        uint messageId = reader.ReadUInt32();
+                        
+                        // Skip additional data (if any) for this entry
+                        if (memoryStream.Position + 4 <= memoryStream.Length)
+                        {
+                            int additionalDataSize = reader.ReadInt32();
+                            
+                            // Validate the size is reasonable
+                            if (additionalDataSize >= 0 && 
+                                additionalDataSize <= 10000 && 
+                                memoryStream.Position + additionalDataSize <= memoryStream.Length)
+                            {
+                                // Skip the additional data
+                                memoryStream.Position += additionalDataSize;
+                            }
+                            else
+                            {
+                                // Invalid data size, stop processing
+                                break;
+                            }
+                        }
+                        
+                        // Store the message ID if it's valid
+                        if (messageId != 0 && PstNodeTypes.IsMessage(messageId))
+                        {
+                            messageIds.Add(messageId);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error parsing contents table: {ex.Message}");
+            }
+            
+            return messageIds;
         }
         
         #endregion

@@ -4,7 +4,7 @@
 34,0,32,2048,128,Project ABC
 35,0,290,2048,128,Personal
 36,0,35,2048,128,Family
-37,0,290,2048,15,Test
+37,0,290,100352,15,Test
 275067871,0,275002335,2048,54,
 8325,0,37,2048,413,Sample Message 2025-04-27 04:00:34,SUBJECT=Sample Message 2025-04-27 04:00:34,SENDER_NAME=Sample Sender,SENDER_EMAIL=sender@example.com,SENT_DATE=2025-04-27T04:00:34.7651231+00:00,BODY_TEXT=This is a sample message created by PstToolkitDemo.
 279598730,0,279533194,2048,54,
@@ -51,9 +51,12 @@
 281889796,0,281824260,2048,54,
 140,0,37,2048,413,Sample Message 2025-04-28 15:51:46,SUBJECT=Sample Message 2025-04-28 15:51:46,SENDER_NAME=Sample Sender,SENDER_EMAIL=sender@example.com,SENT_DATE=2025-04-28T15:51:46.8502126+00:00,BODY_TEXT=This is a sample message created by PstToolkitDemo.
 276017082,0,275951546,2048,54,
-141,0,37,2048,412,Sample Message 2025-04-28 15:52:34,SUBJECT=Sample Message 2025-04-28 15:52:34,SENDER_NAME=Sample Sender,SENDER_EMAIL=sender@example.com,SENT_DATE=2025-04-28T15:52:34.9537919+00:00,BODY_TEXT=This is a sample message created by PstToolkitDemo.
+141,0,37,2048,413,Sample Message 2025-04-28 18:58:59,SUBJECT=Sample Message 2025-04-28 18:58:59,SENDER_NAME=Sample Sender,SENDER_EMAIL=sender@example.com,SENT_DATE=2025-04-28T18:58:59.3179283+00:00,BODY_TEXT=This is a sample message created by PstToolkitDemo.
 272271757,0,272206221,2048,54,
-142,0,37,2048,413,Sample Message 2025-04-28 15:55:03,SUBJECT=Sample Message 2025-04-28 15:55:03,SENDER_NAME=Sample Sender,SENDER_EMAIL=sender@example.com,SENT_DATE=2025-04-28T15:55:03.8969486+00:00,BODY_TEXT=This is a sample message created by PstToolkitDemo.
+142,0,37,2048,413,Sample Message 2025-04-28 19:01:55,SUBJECT=Sample Message 2025-04-28 19:01:55,SENDER_NAME=Sample Sender,SENDER_EMAIL=sender@example.com,SENT_DATE=2025-04-28T19:01:56.2391967+00:00,BODY_TEXT=This is a sample message created by PstToolkitDemo.
+
+Created on: 4/28/2025 7:01:55PM
+This message demonstrates the PstToolkit's ability to create and add messages to PST files.,IS_READ=False,HAS_ATTACHMENTS=True,IMPORTANCE=1
 270679457,0,270613921,2048,54,
 143,0,37,2048,413,Sample Message 2025-04-28 16:02:21,SUBJECT=Sample Message 2025-04-28 16:02:21,SENDER_NAME=Sample Sender,SENDER_EMAIL=sender@example.com,SENT_DATE=2025-04-28T16:02:21.6928327+00:00,BODY_TEXT=This is a sample message created by PstToolkitDemo.
 269169277,0,269103741,2048,54,
@@ -80,11 +83,11 @@
 153,0,37,2048,412,Sample Message 2025-04-28 17:35:59,SUBJECT=Sample Message 2025-04-28 17:35:59,SENDER_NAME=Sample Sender,SENDER_EMAIL=sender@example.com,SENT_DATE=2025-04-28T17:35:59.9759028+00:00,BODY_TEXT=This is a sample message created by PstToolkitDemo.
 217,218,37,2048,272,Sample Message 2025-04-28 17:35:59
 277251884,0,277186348,2048,54,
-154,0,37,2048,412,Sample Message 2025-04-28 17:55:23,SUBJECT=Sample Message 2025-04-28 17:55:23,SENDER_NAME=Sample Sender,SENDER_EMAIL=sender@example.com,SENT_DATE=2025-04-28T17:55:23.6916702+00:00,BODY_TEXT=This is a sample message created by PstToolkitDemo.
-218,219,37,2048,272,Sample Message 2025-04-28 17:55:23
+154,0,37,2048,413,Sample Message 2025-04-28 18:52:28,SUBJECT=Sample Message 2025-04-28 18:52:28,SENDER_NAME=Sample Sender,SENDER_EMAIL=sender@example.com,SENT_DATE=2025-04-28T18:52:28.4601931+00:00,BODY_TEXT=This is a sample message created by PstToolkitDemo.
+218,219,37,2048,272,Sample Message 2025-04-28 18:52:28
 283543197,0,283477661,88064,54,
-155,0,37,89088,413,Sample Message 2025-04-28 18:03:18,SUBJECT=Sample Message 2025-04-28 18:03:18,SENDER_NAME=Sample Sender,SENDER_EMAIL=sender@example.com,SENT_DATE=2025-04-28T18:03:19.0866013+00:00,BODY_TEXT=This is a sample message created by PstToolkitDemo.
-219,220,37,90112,272,Sample Message 2025-04-28 18:03:18
+155,0,37,2048,413,Sample Message 2025-04-28 18:55:02,SUBJECT=Sample Message 2025-04-28 18:55:02,SENDER_NAME=Sample Sender,SENDER_EMAIL=sender@example.com,SENT_DATE=2025-04-28T18:55:02.2843896+00:00,BODY_TEXT=This is a sample message created by PstToolkitDemo.
+219,220,37,2048,272,Sample Message 2025-04-28 18:55:02
 278466484,0,278400948,91136,54,
 156,0,37,92160,413,Sample Message 2025-04-28 18:09:54,SUBJECT=Sample Message 2025-04-28 18:09:54,SENDER_NAME=Sample Sender,SENDER_EMAIL=sender@example.com,SENT_DATE=2025-04-28T18:09:54.6096125+00:00,BODY_TEXT=This is a sample message created by PstToolkitDemo.
 220,221,37,93184,272,Sample Message 2025-04-28 18:09:54
@@ -93,7 +96,13 @@
 221,222,37,96256,272,Sample Message 2025-04-28 18:11:17
 281384372,0,281318836,2048,54,
 158,0,37,2048,413,Sample Message 2025-04-28 18:34:07,SUBJECT=Sample Message 2025-04-28 18:34:07,SENDER_NAME=Sample Sender,SENDER_EMAIL=sender@example.com,SENT_DATE=2025-04-28T18:34:07.6821378+00:00,BODY_TEXT=This is a sample message created by PstToolkitDemo.
-
-Created on: 4/28/2025 6:34:07PM
-This message demonstrates the PstToolkit's ability to create and add messages to PST files.,IS_READ=False,HAS_ATTACHMENTS=True,IMPORTANCE=1
 222,223,37,2048,272,Sample Message 2025-04-28 18:34:07
+277929365,0,277863829,2048,54,
+159,0,37,2048,413,Sample Message 2025-04-28 18:51:50,SUBJECT=Sample Message 2025-04-28 18:51:50,SENDER_NAME=Sample Sender,SENDER_EMAIL=sender@example.com,SENT_DATE=2025-04-28T18:51:50.9966632+00:00,BODY_TEXT=This is a sample message created by PstToolkitDemo.
+223,224,37,2048,272,Sample Message 2025-04-28 18:51:50
+283301561,0,283236025,2048,54,
+277112130,0,277046594,2048,54,
+282708345,0,282642809,96768,54,
+205,206,37,97280,272,Sample Message 2025-04-28 18:58:59
+272609713,0,272544177,98816,54,
+206,207,37,99328,272,Sample Message 2025-04-28 19:01:55
