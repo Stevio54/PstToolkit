@@ -216,5 +216,95 @@ namespace PstToolkit.Utils
             
             return result;
         }
+        
+        /// <summary>
+        /// Reads a property value from the stream based on its data type.
+        /// </summary>
+        /// <param name="propertyType">The type of property to read.</param>
+        /// <param name="valueSize">Size in bytes for variable-length properties.</param>
+        /// <returns>The property value with the appropriate type.</returns>
+        public object ReadPropertyValue(PstStructure.PropertyType propertyType, int valueSize = 0)
+        {
+            switch (propertyType)
+            {
+                case PstStructure.PropertyType.PT_UNSPECIFIED:
+                case PstStructure.PropertyType.PT_NULL:
+                    // Return empty string instead of null to avoid CS8603 warning
+                    return string.Empty;
+                    
+                case PstStructure.PropertyType.PT_SHORT:
+                    return ReadInt16();
+                    
+                case PstStructure.PropertyType.PT_LONG:
+                    return ReadInt32();
+                    
+                case PstStructure.PropertyType.PT_FLOAT:
+                    return ReadSingle();
+                    
+                case PstStructure.PropertyType.PT_DOUBLE:
+                    return ReadDouble();
+                    
+                case PstStructure.PropertyType.PT_CURRENCY:
+                    // Currency is an 8-byte integer scaled by 10,000
+                    return ReadInt64() / 10000.0m;
+                    
+                case PstStructure.PropertyType.PT_APPTIME:
+                    // Application time is a double representing days since Dec 30, 1899
+                    double days = ReadDouble();
+                    return new DateTime(1899, 12, 30).AddDays(days);
+                    
+                case PstStructure.PropertyType.PT_ERROR:
+                    return ReadUInt32(); // Error code
+                    
+                case PstStructure.PropertyType.PT_BOOLEAN:
+                    return ReadByte() != 0;
+                    
+                case PstStructure.PropertyType.PT_OBJECT:
+                    if (valueSize > 0)
+                    {
+                        return ReadLargeBlock(valueSize);
+                    }
+                    return Array.Empty<byte>();
+                    
+                case PstStructure.PropertyType.PT_LONGLONG:
+                    return ReadInt64();
+                    
+                case PstStructure.PropertyType.PT_STRING8:
+                    if (valueSize > 0)
+                    {
+                        return ReadString(valueSize, Encoding.ASCII);
+                    }
+                    return string.Empty;
+                    
+                case PstStructure.PropertyType.PT_UNICODE:
+                    if (valueSize > 0)
+                    {
+                        return ReadString(valueSize, Encoding.Unicode);
+                    }
+                    return string.Empty;
+                    
+                case PstStructure.PropertyType.PT_SYSTIME:
+                    // FILETIME: 64-bit value representing 100-nanosecond intervals since January 1, 1601 UTC
+                    return ReadFileTime();
+                    
+                case PstStructure.PropertyType.PT_CLSID:
+                    return ReadGuid();
+                    
+                case PstStructure.PropertyType.PT_BINARY:
+                    if (valueSize > 0)
+                    {
+                        return ReadLargeBlock(valueSize);
+                    }
+                    return Array.Empty<byte>();
+                    
+                default:
+                    // Unknown property type, read as binary
+                    if (valueSize > 0)
+                    {
+                        return ReadLargeBlock(valueSize);
+                    }
+                    return Array.Empty<byte>();
+            }
+        }
     }
 }

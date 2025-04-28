@@ -44,6 +44,16 @@
 136,0,37,2048,413,Sample Message 2025-04-28 14:18:27,SUBJECT=Sample Message 2025-04-28 14:18:27,SENDER_NAME=Sample Sender,SENDER_EMAIL=sender@example.com,SENT_DATE=2025-04-28T14:18:27.9853082+00:00,BODY_TEXT=This is a sample message created by PstToolkitDemo.
 279192157,0,279126621,2048,54,
 137,0,37,2048,413,Sample Message 2025-04-28 14:18:53,SUBJECT=Sample Message 2025-04-28 14:18:53,SENDER_NAME=Sample Sender,SENDER_EMAIL=sender@example.com,SENT_DATE=2025-04-28T14:18:53.2063273+00:00,BODY_TEXT=This is a sample message created by PstToolkitDemo.
+280640761,0,280575225,2048,54,
+138,0,37,2048,413,Sample Message 2025-04-28 15:45:10,SUBJECT=Sample Message 2025-04-28 15:45:10,SENDER_NAME=Sample Sender,SENDER_EMAIL=sender@example.com,SENT_DATE=2025-04-28T15:45:10.8040987+00:00,BODY_TEXT=This is a sample message created by PstToolkitDemo.
+282886364,0,282820828,2048,54,
+139,0,37,2048,412,Sample Message 2025-04-28 15:45:20,SUBJECT=Sample Message 2025-04-28 15:45:20,SENDER_NAME=Sample Sender,SENDER_EMAIL=sender@example.com,SENT_DATE=2025-04-28T15:45:21.0822547+00:00,BODY_TEXT=This is a sample message created by PstToolkitDemo.
+281889796,0,281824260,2048,54,
+140,0,37,2048,413,Sample Message 2025-04-28 15:51:46,SUBJECT=Sample Message 2025-04-28 15:51:46,SENDER_NAME=Sample Sender,SENDER_EMAIL=sender@example.com,SENT_DATE=2025-04-28T15:51:46.8502126+00:00,BODY_TEXT=This is a sample message created by PstToolkitDemo.
+276017082,0,275951546,2048,54,
+141,0,37,2048,412,Sample Message 2025-04-28 15:52:34,SUBJECT=Sample Message 2025-04-28 15:52:34,SENDER_NAME=Sample Sender,SENDER_EMAIL=sender@example.com,SENT_DATE=2025-04-28T15:52:34.9537919+00:00,BODY_TEXT=This is a sample message created by PstToolkitDemo.
+272271757,0,272206221,2048,54,
+142,0,37,2048,413,Sample Message 2025-04-28 15:55:03,SUBJECT=Sample Message 2025-04-28 15:55:03,SENDER_NAME=Sample Sender,SENDER_EMAIL=sender@example.com,SENT_DATE=2025-04-28T15:55:03.8969486+00:00,BODY_TEXT=This is a sample message created by PstToolkitDemo.
 
-Created on: 4/28/2025 2:18:53PM
+Created on: 4/28/2025 3:55:03PM
 This message demonstrates the PstToolkit's ability to create and add messages to PST files.,IS_READ=False,HAS_ATTACHMENTS=True,IMPORTANCE=1

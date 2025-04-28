@@ -6,6 +6,7 @@ using System.Linq;
 using PstToolkit;
 using PstToolkit.Exceptions;
 using PstToolkit.Formats;
+using static PstToolkit.FilterOperator;
 
 namespace PstToolkitDemo
 {

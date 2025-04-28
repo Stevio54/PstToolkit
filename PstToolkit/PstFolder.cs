@@ -83,6 +83,21 @@ namespace PstToolkit
                 return _messages;
             }
         }
+        
+        /// <summary>
+        /// Gets a filtered list of messages in this folder.
+        /// </summary>
+        /// <param name="filter">The filter to apply to the messages.</param>
+        /// <returns>A filtered list of messages.</returns>
+        public IEnumerable<PstMessage> GetFilteredMessages(MessageFilter filter)
+        {
+            if (!_messagesLoaded)
+            {
+                LoadMessages();
+            }
+            
+            return filter.Apply(_messages);
+        }
 
         /// <summary>
         /// Gets the folder type (e.g., Inbox, Sent Items, etc.).
