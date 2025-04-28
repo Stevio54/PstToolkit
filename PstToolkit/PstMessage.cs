@@ -2,10 +2,12 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
+using System.Linq;
 using MimeKit;
 using PstToolkit.Exceptions;
 using PstToolkit.Formats;
 using PstToolkit.Utils;
+using static PstToolkit.Utils.PstStructure;
 
 namespace PstToolkit
 {
@@ -355,6 +357,72 @@ namespace PstToolkit
             }
             
             return _rawContent ?? Array.Empty<byte>();
+        }
+        
+        /// <summary>
+        /// Gets the PropertyContext associated with this message for advanced property access.
+        /// This is primarily for internal use when copying messages between PST files.
+        /// </summary>
+        /// <returns>The PropertyContext for this message.</returns>
+        internal PropertyContext GetPropertyContext()
+        {
+            return _propertyContext;
+        }
+        
+        /// <summary>
+        /// Creates a new message by copying all properties from an existing message.
+        /// This ensures a complete property copy rather than just the standard properties.
+        /// </summary>
+        /// <param name="pstFile">The PST file to create the message in.</param>
+        /// <param name="sourceMessage">The source message to copy properties from.</param>
+        /// <returns>The newly created message with all properties copied.</returns>
+        /// <exception cref="PstAccessException">Thrown if the PST file is read-only.</exception>
+        /// <exception cref="PstException">Thrown if the message creation fails.</exception>
+        public static PstMessage CreateFromExisting(PstFile pstFile, PstMessage sourceMessage)
+        {
+            if (pstFile.IsReadOnly)
+            {
+                throw new PstAccessException("Cannot create a message in a read-only PST file.");
+            }
+            
+            try
+            {
+                // Generate a temporary node ID for the message
+                // In a real implementation, this would be allocated by the PST file
+                uint newMessageId = 0x10000000 | (uint)DateTime.Now.Ticks & 0xFFFFFF;
+                
+                // Create a node for the message
+                var bTree = pstFile.GetNodeBTree();
+                var nodeData = sourceMessage.GetRawContent(); // Get raw content to preserve all properties
+                var nodeEntry = bTree.AddNode(newMessageId, 0, 0, nodeData, sourceMessage.Subject);
+                
+                // Create the message object
+                var message = new PstMessage(pstFile, nodeEntry);
+                
+                // Extract all properties from the source message through its PropertyContext
+                var sourceContext = sourceMessage.GetPropertyContext();
+                Dictionary<uint, object> sourceProperties = sourceContext.GetAllProperties();
+                
+                // For each property in the source message, set it in the new message
+                foreach (var kvp in sourceProperties)
+                {
+                    // Copy property exactly as it is, preserving property ID and type
+                    message._propertyContext.SetProperty(
+                        (ushort)(kvp.Key & 0xFFFF),  // Extract property ID from combined key
+                        (PstStructure.PropertyType)((kvp.Key >> 16) & 0xFFFF), // Extract property type from combined key
+                        kvp.Value
+                    );
+                }
+                
+                // Reload the properties to ensure they take effect
+                message.LoadProperties();
+                
+                return message;
+            }
+            catch (Exception ex)
+            {
+                throw new PstException("Failed to create message by copying existing message", ex);
+            }
         }
 
         /// <summary>

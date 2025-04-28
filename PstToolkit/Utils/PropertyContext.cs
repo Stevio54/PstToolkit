@@ -29,6 +29,20 @@ namespace PstToolkit.Utils
             _nodeEntry = nodeEntry;
             _isAnsi = pstFile.IsAnsi;
         }
+        
+        /// <summary>
+        /// Initializes a new instance of the <see cref="PropertyContext"/> class with predefined properties.
+        /// </summary>
+        /// <param name="pstFile">The PST file.</param>
+        /// <param name="nodeEntry">The node entry.</param>
+        /// <param name="propertiesToCopy">The properties to copy from another property context.</param>
+        public PropertyContext(PstFile pstFile, NdbNodeEntry nodeEntry, Dictionary<uint, object> propertiesToCopy)
+        {
+            _pstFile = pstFile;
+            _nodeEntry = nodeEntry;
+            _isAnsi = pstFile.IsAnsi;
+            _properties = new Dictionary<uint, object>(propertiesToCopy);
+        }
 
         /// <summary>
         /// Gets a string property.
@@ -241,6 +255,36 @@ namespace PstToolkit.Utils
             }
         }
 
+        /// <summary>
+        /// Gets all the properties in this context as a dictionary.
+        /// </summary>
+        /// <returns>A dictionary of all properties with their property IDs and values.</returns>
+        public Dictionary<uint, object> GetAllProperties()
+        {
+            EnsurePropertiesLoaded();
+            
+            // Return a deep copy to prevent modification of internal state
+            Dictionary<uint, object> propertiesCopy = new Dictionary<uint, object>(_properties!.Count);
+            
+            foreach (var kvp in _properties!)
+            {
+                // For certain types that are reference types, create a copy
+                if (kvp.Value is byte[] byteArray)
+                {
+                    byte[] copy = new byte[byteArray.Length];
+                    Buffer.BlockCopy(byteArray, 0, copy, 0, byteArray.Length);
+                    propertiesCopy[kvp.Key] = copy;
+                }
+                else
+                {
+                    // For value types or immutable types, direct copy is fine
+                    propertiesCopy[kvp.Key] = kvp.Value;
+                }
+            }
+            
+            return propertiesCopy;
+        }
+        
         /// <summary>
         /// Saves any modified properties back to the PST file.
         /// </summary>

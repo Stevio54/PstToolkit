@@ -856,6 +856,24 @@
             </summary>
             <returns>The raw message content as a byte array.</returns>
         </member>
+        <member name="M:PstToolkit.PstMessage.GetPropertyContext">
+            <summary>
+            Gets the PropertyContext associated with this message for advanced property access.
+            This is primarily for internal use when copying messages between PST files.
+            </summary>
+            <returns>The PropertyContext for this message.</returns>
+        </member>
+        <member name="M:PstToolkit.PstMessage.CreateFromExisting(PstToolkit.PstFile,PstToolkit.PstMessage)">
+            <summary>
+            Creates a new message by copying all properties from an existing message.
+            This ensures a complete property copy rather than just the standard properties.
+            </summary>
+            <param name="pstFile">The PST file to create the message in.</param>
+            <param name="sourceMessage">The source message to copy properties from.</param>
+            <returns>The newly created message with all properties copied.</returns>
+            <exception cref="T:PstToolkit.Exceptions.PstAccessException">Thrown if the PST file is read-only.</exception>
+            <exception cref="T:PstToolkit.Exceptions.PstException">Thrown if the message creation fails.</exception>
+        </member>
         <member name="T:PstToolkit.PstMessage.Attachment">
             <summary>
             Represents an attachment to an email message.
@@ -1212,6 +1230,14 @@
             <param name="pstFile">The PST file.</param>
             <param name="nodeEntry">The node entry.</param>
         </member>
+        <member name="M:PstToolkit.Utils.PropertyContext.#ctor(PstToolkit.PstFile,PstToolkit.Utils.NdbNodeEntry,System.Collections.Generic.Dictionary{System.UInt32,System.Object})">
+            <summary>
+            Initializes a new instance of the <see cref="T:PstToolkit.Utils.PropertyContext"/> class with predefined properties.
+            </summary>
+            <param name="pstFile">The PST file.</param>
+            <param name="nodeEntry">The node entry.</param>
+            <param name="propertiesToCopy">The properties to copy from another property context.</param>
+        </member>
         <member name="M:PstToolkit.Utils.PropertyContext.GetString(System.UInt16)">
             <summary>
             Gets a string property.
@@ -1276,6 +1302,12 @@
             <param name="propertyId">The property ID.</param>
             <param name="propertyType">The property type.</param>
             <returns>True if the property was deleted, false if it wasn't found.</returns>
+        </member>
+        <member name="M:PstToolkit.Utils.PropertyContext.GetAllProperties">
+            <summary>
+            Gets all the properties in this context as a dictionary.
+            </summary>
+            <returns>A dictionary of all properties with their property IDs and values.</returns>
         </member>
         <member name="M:PstToolkit.Utils.PropertyContext.Save">
             <summary>
