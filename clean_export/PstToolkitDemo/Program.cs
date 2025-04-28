@@ -6,6 +6,7 @@ using System.Linq;
 using PstToolkit;
 using PstToolkit.Exceptions;
 using PstToolkit.Formats;
+using static PstToolkit.FilterOperator;
 
 namespace PstToolkitDemo
 {
@@ -69,6 +70,16 @@ namespace PstToolkitDemo
                             return;
                         }
                         CopyPst(args[1], args[2]);
+                        break;
+                        
+                    case "filteredcopy":
+                        if (args.Length < 4)
+                        {
+                            Console.WriteLine("Error: Source PST, destination PST, and filter parameters are required for filteredcopy command.");
+                            ShowUsage();
+                            return;
+                        }
+                        CopyPstWithFilter(args[1], args[2], args[3]);
                         break;
                         
                     case "create":
@@ -139,6 +150,7 @@ namespace PstToolkitDemo
             Console.WriteLine("  PstToolkitDemo list <pst_file>                 - List all folders in a PST file");
             Console.WriteLine("  PstToolkitDemo listmessages <pst_file> <folder> - List all messages in a folder");
             Console.WriteLine("  PstToolkitDemo copy <src> <dst>                - Copy messages from source PST to destination PST");
+            Console.WriteLine("  PstToolkitDemo filteredcopy <src> <dst> <filter> - Copy filtered messages from source PST to destination PST");
             Console.WriteLine("  PstToolkitDemo create <pst_file>               - Create a new PST file");
             Console.WriteLine("  PstToolkitDemo message <pst_file> <folder>     - Add a sample message to the specified folder");
             Console.WriteLine("  PstToolkitDemo extract <pst_file> <folder> <output_dir> - Extract messages from a folder to .eml files");
@@ -228,6 +240,370 @@ namespace PstToolkitDemo
                 }
             }
         }
+        
+        static void CopyPstWithFilter(string sourcePath, string destPath, string filterSpec)
+        {
+            Console.WriteLine($"Copying PST file with filter: {sourcePath} -> {destPath}");
+            Console.WriteLine($"Filter criteria: {filterSpec}");
+            
+            try
+            {
+                // Open source PST in read-only mode
+                using var sourcePst = PstFile.Open(sourcePath, readOnly: true);
+                
+                // Handle existing destination file
+                if (File.Exists(destPath))
+                {
+                    Console.WriteLine($"Destination file already exists, removing: {destPath}");
+                    File.Delete(destPath);
+                }
+                
+                // Create a new destination PST
+                Console.WriteLine($"Creating new destination file: {destPath}");
+                using var destPst = PstFile.Create(destPath);
+                
+                // Create a message filter based on the filter specification
+                var filter = ParseFilterSpec(filterSpec);
+                if (filter == null)
+                {
+                    Console.WriteLine("Error: Invalid filter specification. Using default (copy all).");
+                    destPst.CopyFrom(sourcePst);
+                }
+                else
+                {
+                    Console.WriteLine("Copying folders and filtered messages...");
+                    
+                    // Count messages matching the filter criteria
+                    int totalMessages = CountMessages(sourcePst.RootFolder);
+                    int matchingMessages = 0;
+                    CountMatchingMessages(sourcePst.RootFolder, filter, ref matchingMessages);
+                    
+                    Console.WriteLine($"Total messages in source: {totalMessages}");
+                    Console.WriteLine($"Messages matching filter: {matchingMessages}");
+                    
+                    if (matchingMessages == 0)
+                    {
+                        Console.WriteLine("Warning: No messages match the filter criteria.");
+                        Console.Write("Do you want to continue with the copy operation? (y/n): ");
+                        var response = Console.ReadLine()?.ToLower();
+                        if (response != "y" && response != "yes")
+                        {
+                            Console.WriteLine("Operation canceled by user.");
+                            return;
+                        }
+                    }
+                    
+                    // Using stopwatch to track performance
+                    var stopwatch = new System.Diagnostics.Stopwatch();
+                    stopwatch.Start();
+                    
+                    // Set up progress reporting
+                    int lastPercent = -1;
+                    destPst.CopyFrom(sourcePst, filter, progress => {
+                        int percent = (int)(progress * 100);
+                        if (percent > lastPercent)
+                        {
+                            Console.Write($"\rProgress: {percent}%");
+                            lastPercent = percent;
+                        }
+                    });
+                    
+                    stopwatch.Stop();
+                    Console.WriteLine("\rProgress: 100%");
+                    
+                    // Count messages in destination
+                    int copiedMessages = CountMessages(destPst.RootFolder);
+                    
+                    // Calculate statistics
+                    double timeInSeconds = stopwatch.ElapsedMilliseconds / 1000.0;
+                    double messagesPerSecond = copiedMessages / timeInSeconds;
+                    
+                    Console.WriteLine($"Filtered copy completed successfully in {timeInSeconds:F2} seconds!");
+                    Console.WriteLine($"Copied {copiedMessages} of {matchingMessages} matching messages ({messagesPerSecond:F2} messages/sec)");
+                    
+                    // If there's a difference, explain why
+                    if (copiedMessages != matchingMessages)
+                    {
+                        Console.WriteLine($"Note: {matchingMessages - copiedMessages} messages were skipped due to errors or incompatibility.");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error during filtered copy: {ex.Message}");
+                if (ex.InnerException != null)
+                {
+                    Console.WriteLine($"Details: {ex.InnerException.Message}");
+                }
+            }
+        }
+        
+        static MessageFilter? ParseFilterSpec(string filterSpec)
+        {
+            // Format examples:
+            // subject:contains:Project Update - Filter messages with subject containing "Project Update" 
+            // sender:equals:john@example.com - Filter messages with sender email exactly matching
+            // date:after:2025-04-25 - Filter messages sent after 2025-04-25
+            // Multiple filter formats:
+            // AND - subject:contains:Important AND date:after:2025-04-25
+            // OR - subject:contains:Report OR subject:contains:Summary
+            
+            try
+            {
+                // Check for multiple conditions with AND/OR
+                if (filterSpec.Contains(" AND "))
+                {
+                    // Split by AND and create a filter with All (AND) logic
+                    var conditions = filterSpec.Split(new[] { " AND " }, StringSplitOptions.None);
+                    var filter = new MessageFilter().SetLogic(FilterLogic.All);
+                    
+                    // Add each condition directly to the filter
+                    foreach (var condition in conditions)
+                    {
+                        var subFilter = ParseSingleFilterCondition(condition);
+                        if (subFilter == null)
+                        {
+                            Console.WriteLine($"Warning: Invalid filter condition: {condition}");
+                            return null;
+                        }
+                        
+                        // Add the single filter condition directly
+                        var parts = condition.Split(':');
+                        if (parts.Length < 2)
+                        {
+                            Console.WriteLine($"Error: Filter must be in format 'property:operator:value': {condition}");
+                            return null;
+                        }
+                        
+                        string property = parts[0].ToLowerInvariant();
+                        string op = parts.Length > 1 ? parts[1].ToLowerInvariant() : "contains";
+                        string value = parts.Length > 2 ? string.Join(":", parts.Skip(2)) : "";
+                        
+                        // Map the operator string to FilterOperator enum
+                        FilterOperator filterOp = GetOperator(op);
+                        
+                        // Special handling for dates
+                        if (property == "date" || property == "sentdate" || property == "receiveddate")
+                        {
+                            if (DateTime.TryParse(value, out DateTime dateValue))
+                            {
+                                filter.AddCondition(property, filterOp, dateValue);
+                            }
+                            else
+                            {
+                                filter.AddCondition(property, filterOp, value);
+                            }
+                        }
+                        else
+                        {
+                            filter.AddCondition(property, filterOp, value);
+                        }
+                    }
+                    
+                    return filter;
+                }
+                else if (filterSpec.Contains(" OR "))
+                {
+                    // Split by OR and create a filter with Any (OR) logic
+                    var conditions = filterSpec.Split(new[] { " OR " }, StringSplitOptions.None);
+                    var filter = new MessageFilter().SetLogic(FilterLogic.Any);
+                    
+                    // Add each condition directly to the filter
+                    foreach (var condition in conditions)
+                    {
+                        var subFilter = ParseSingleFilterCondition(condition);
+                        if (subFilter == null)
+                        {
+                            Console.WriteLine($"Warning: Invalid filter condition: {condition}");
+                            return null;
+                        }
+                        
+                        // Add the single filter condition directly
+                        var parts = condition.Split(':');
+                        if (parts.Length < 2)
+                        {
+                            Console.WriteLine($"Error: Filter must be in format 'property:operator:value': {condition}");
+                            return null;
+                        }
+                        
+                        string property = parts[0].ToLowerInvariant();
+                        string op = parts.Length > 1 ? parts[1].ToLowerInvariant() : "contains";
+                        string value = parts.Length > 2 ? string.Join(":", parts.Skip(2)) : "";
+                        
+                        // Map the operator string to FilterOperator enum
+                        FilterOperator filterOp = GetOperator(op);
+                        
+                        // Special handling for dates
+                        if (property == "date" || property == "sentdate" || property == "receiveddate")
+                        {
+                            if (DateTime.TryParse(value, out DateTime dateValue))
+                            {
+                                filter.AddCondition(property, filterOp, dateValue);
+                            }
+                            else
+                            {
+                                filter.AddCondition(property, filterOp, value);
+                            }
+                        }
+                        else
+                        {
+                            filter.AddCondition(property, filterOp, value);
+                        }
+                    }
+                    
+                    return filter;
+                }
+                else
+                {
+                    // Single condition
+                    return ParseSingleFilterCondition(filterSpec);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error parsing filter: {ex.Message}");
+                return null;
+            }
+        }
+        
+        // Helper method to get FilterOperator from string
+        private static FilterOperator GetOperator(string op)
+        {
+            switch (op.ToLowerInvariant())
+            {
+                case "contains":
+                    return FilterOperator.Contains;
+                case "equals":
+                case "is":
+                    return FilterOperator.Equals;
+                case "startswith":
+                case "starts":
+                    return FilterOperator.StartsWith;
+                case "endswith":
+                case "ends":
+                    return FilterOperator.EndsWith;
+                case "after":
+                case "greaterthan":
+                case "newer":
+                    return FilterOperator.GreaterThan;
+                case "before":
+                case "lessthan":
+                case "older":
+                    return FilterOperator.LessThan;
+                case "between":
+                    return FilterOperator.Between;
+                case "regex":
+                case "matches":
+                    return FilterOperator.RegexMatch;
+                default:
+                    return FilterOperator.Contains; // Default
+            }
+        }
+        
+        static MessageFilter? ParseSingleFilterCondition(string filterSpec)
+        {
+            try
+            {
+                var parts = filterSpec.Split(':');
+                if (parts.Length < 2)
+                {
+                    Console.WriteLine("Error: Filter must be in format 'property:operator:value'");
+                    return null;
+                }
+                
+                string property = parts[0].ToLowerInvariant();
+                string op = parts.Length > 1 ? parts[1].ToLowerInvariant() : "contains";
+                string value = parts.Length > 2 ? string.Join(":", parts.Skip(2)) : "";
+                
+                var filter = new MessageFilter();
+                
+                // Map the operator string to FilterOperator enum
+                FilterOperator filterOp = FilterOperator.Contains; // Default
+                switch (op)
+                {
+                    case "contains":
+                        filterOp = FilterOperator.Contains;
+                        break;
+                    case "equals":
+                    case "is":
+                        filterOp = FilterOperator.Equals;
+                        break;
+                    case "startswith":
+                    case "starts":
+                        filterOp = FilterOperator.StartsWith;
+                        break;
+                    case "endswith":
+                    case "ends":
+                        filterOp = FilterOperator.EndsWith;
+                        break;
+                    case "after":
+                    case "greaterthan":
+                    case "newer":
+                        filterOp = FilterOperator.GreaterThan;
+                        // For dates, try to parse the value
+                        if (property == "date" || property == "sentdate" || property == "receiveddate")
+                        {
+                            if (DateTime.TryParse(value, out DateTime dateValue))
+                            {
+                                value = dateValue.ToString("o"); // Use ISO 8601 format
+                            }
+                        }
+                        break;
+                    case "before":
+                    case "lessthan":
+                    case "older":
+                        filterOp = FilterOperator.LessThan;
+                        // For dates, try to parse the value
+                        if (property == "date" || property == "sentdate" || property == "receiveddate")
+                        {
+                            if (DateTime.TryParse(value, out DateTime dateValue))
+                            {
+                                value = dateValue.ToString("o"); // Use ISO 8601 format
+                            }
+                        }
+                        break;
+                    case "between":
+                        filterOp = FilterOperator.Between;
+                        // Extract range values
+                        var rangeValues = value.Split('-');
+                        if (rangeValues.Length >= 2)
+                        {
+                            value = rangeValues[0].Trim();
+                            string value2 = rangeValues[1].Trim();
+                            
+                            // For dates, try to parse the values
+                            if (property == "date" || property == "sentdate" || property == "receiveddate")
+                            {
+                                if (DateTime.TryParse(value, out DateTime dateValue1) && 
+                                    DateTime.TryParse(value2, out DateTime dateValue2))
+                                {
+                                    filter.AddCondition(property, filterOp, dateValue1, dateValue2);
+                                    return filter;
+                                }
+                            }
+                            else
+                            {
+                                filter.AddCondition(property, filterOp, value, value2);
+                                return filter;
+                            }
+                        }
+                        break;
+                    case "regex":
+                    case "matches":
+                        filterOp = FilterOperator.RegexMatch;
+                        break;
+                }
+                
+                // Add the condition to the filter
+                filter.AddCondition(property, filterOp, value);
+                return filter;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error parsing filter: {ex.Message}");
+                return null;
+            }
+        }
 
         static void CreatePst(string pstFilePath)
         {
@@ -262,6 +638,38 @@ namespace PstToolkitDemo
             }
             
             return count;
+        }
+        
+        /// <summary>
+        /// Counts messages in a folder and its subfolders that match the given filter.
+        /// </summary>
+        /// <param name="folder">The folder to check.</param>
+        /// <param name="filter">The message filter to apply.</param>
+        /// <param name="matchCount">Reference to a counter for matching messages.</param>
+        static void CountMatchingMessages(PstFolder folder, MessageFilter? filter, ref int matchCount)
+        {
+            if (filter == null) 
+            {
+                // If no filter, all messages match
+                matchCount += folder.MessageCount;
+            }
+            else
+            {
+                // Apply filter to messages in this folder
+                foreach (var message in folder.Messages)
+                {
+                    if (filter.Matches(message))
+                    {
+                        matchCount++;
+                    }
+                }
+            }
+            
+            // Recursively count in subfolders
+            foreach (var subFolder in folder.SubFolders)
+            {
+                CountMatchingMessages(subFolder, filter, ref matchCount);
+            }
         }
         
         static void AddSampleMessage(string pstFilePath, string folderName)

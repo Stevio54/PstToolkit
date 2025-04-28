@@ -76,6 +76,16 @@ namespace PstToolkit.Formats
         public const ushort NID_TYPE_SEARCH_CONTENTS_TABLE = 0x000D;
         
         /// <summary>
+        /// Node type for attachment data.
+        /// </summary>
+        public const ushort NID_TYPE_ATTACHMENT_DATA = 0x000E;
+        
+        /// <summary>
+        /// Node type for embedded message object.
+        /// </summary>
+        public const ushort NID_TYPE_ATTACHMENT_OBJECT = 0x000F;
+        
+        /// <summary>
         /// Extracts the node type from a node ID.
         /// </summary>
         /// <param name="nodeId">The node ID.</param>

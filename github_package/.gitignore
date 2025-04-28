@@ -1,0 +1,38 @@
+# .NET build artifacts
+bin/
+obj/
+*.dll
+*.exe
+*.pdb
+*.user
+*.vs/
+.vscode/
+.idea/
+*.userprefs
+*.suo
+*.cache
+*.pidb
+*.log
+*.vspscc
+*.vssscc
+.vs/
+
+# PST files
+*.pst
+*.pst.nodes
+*.backup.pst
+
+# Generated files
+generated-icon.png
+extracted/
+extracted_dest/
+
+# Temporary files
+*.tmp
+*.temp
+*.swp
+*~
+
+# OS-specific files
+.DS_Store
+Thumbs.db

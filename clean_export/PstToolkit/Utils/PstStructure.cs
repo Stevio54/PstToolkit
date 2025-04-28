@@ -43,6 +43,11 @@ namespace PstToolkit.Utils
             public const ushort PidTagAttachLongFilename = 0x3707;
             public const ushort PidTagAttachMethod = 0x3705;
             public const ushort PidTagAttachData = 0x3701;
+            public const ushort PidTagAttachDataBinary = 0x3701;
+            public const ushort PidTagAttachDataObject = 0x3702;
+            public const ushort PidTagAttachPathname = 0x3708;
+            public const ushort PidTagAttachLongPathname = 0x370D;
+            public const ushort PidTagAttachMimeTag = 0x370E;
             
             // Folder Properties
             public const ushort PidTagContainerClass = 0x3613;

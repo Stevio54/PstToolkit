@@ -2,10 +2,12 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
+using System.Linq;
 using MimeKit;
 using PstToolkit.Exceptions;
 using PstToolkit.Formats;
 using PstToolkit.Utils;
+using static PstToolkit.Utils.PstStructure;
 
 namespace PstToolkit
 {
@@ -356,6 +358,72 @@ namespace PstToolkit
             
             return _rawContent ?? Array.Empty<byte>();
         }
+        
+        /// <summary>
+        /// Gets the PropertyContext associated with this message for advanced property access.
+        /// This is primarily for internal use when copying messages between PST files.
+        /// </summary>
+        /// <returns>The PropertyContext for this message.</returns>
+        internal PropertyContext GetPropertyContext()
+        {
+            return _propertyContext;
+        }
+        
+        /// <summary>
+        /// Creates a new message by copying all properties from an existing message.
+        /// This ensures a complete property copy rather than just the standard properties.
+        /// </summary>
+        /// <param name="pstFile">The PST file to create the message in.</param>
+        /// <param name="sourceMessage">The source message to copy properties from.</param>
+        /// <returns>The newly created message with all properties copied.</returns>
+        /// <exception cref="PstAccessException">Thrown if the PST file is read-only.</exception>
+        /// <exception cref="PstException">Thrown if the message creation fails.</exception>
+        public static PstMessage CreateFromExisting(PstFile pstFile, PstMessage sourceMessage)
+        {
+            if (pstFile.IsReadOnly)
+            {
+                throw new PstAccessException("Cannot create a message in a read-only PST file.");
+            }
+            
+            try
+            {
+                // Generate a temporary node ID for the message
+                // In a real implementation, this would be allocated by the PST file
+                uint newMessageId = 0x10000000 | (uint)DateTime.Now.Ticks & 0xFFFFFF;
+                
+                // Create a node for the message
+                var bTree = pstFile.GetNodeBTree();
+                var nodeData = sourceMessage.GetRawContent(); // Get raw content to preserve all properties
+                var nodeEntry = bTree.AddNode(newMessageId, 0, 0, nodeData, sourceMessage.Subject);
+                
+                // Create the message object
+                var message = new PstMessage(pstFile, nodeEntry);
+                
+                // Extract all properties from the source message through its PropertyContext
+                var sourceContext = sourceMessage.GetPropertyContext();
+                Dictionary<uint, object> sourceProperties = sourceContext.GetAllProperties();
+                
+                // For each property in the source message, set it in the new message
+                foreach (var kvp in sourceProperties)
+                {
+                    // Copy property exactly as it is, preserving property ID and type
+                    message._propertyContext.SetProperty(
+                        (ushort)(kvp.Key & 0xFFFF),  // Extract property ID from combined key
+                        (PstStructure.PropertyType)((kvp.Key >> 16) & 0xFFFF), // Extract property type from combined key
+                        kvp.Value
+                    );
+                }
+                
+                // Reload the properties to ensure they take effect
+                message.LoadProperties();
+                
+                return message;
+            }
+            catch (Exception ex)
+            {
+                throw new PstException("Failed to create message by copying existing message", ex);
+            }
+        }
 
         /// <summary>
         /// Represents an attachment to an email message.
@@ -386,6 +454,11 @@ namespace PstToolkit
             /// Gets whether the attachment is embedded (displayed inline in the message).
             /// </summary>
             public bool IsEmbedded { get; internal set; }
+            
+            /// <summary>
+            /// Gets whether this attachment is an email message.
+            /// </summary>
+            public bool IsEmailMessage => ContentType.Equals("message/rfc822", StringComparison.OrdinalIgnoreCase);
 
             /// <summary>
             /// Gets the attachment data as a byte array.
@@ -407,19 +480,114 @@ namespace PstToolkit
 
                 return Array.Empty<byte>();
             }
+            
+            /// <summary>
+            /// If this attachment is an email message, gets it as a PstMessage.
+            /// Returns null if the attachment is not an email message.
+            /// </summary>
+            /// <returns>A PstMessage if the attachment is an email, otherwise null.</returns>
+            public PstMessage? GetAsEmailMessage()
+            {
+                if (!IsEmailMessage)
+                {
+                    return null;
+                }
+                
+                try
+                {
+                    byte[] content = GetContent();
+                    if (content.Length == 0)
+                    {
+                        return null;
+                    }
+                    
+                    // Parse the content as a MimeMessage
+                    using var stream = new MemoryStream(content);
+                    var mimeMessage = MimeMessage.Load(stream);
+                    
+                    // Create a new PstMessage from the MimeMessage
+                    var nodeEntry = new NdbNodeEntry(
+                        // Generate a temporary ID for this email attachment
+                        (uint)(0x20000000 | (uint)DateTime.Now.Ticks & 0xFFFFFF),
+                        0,  // No parent - this is not in the PST structure
+                        0,  // Block ID - not applicable here
+                        0,  // Data offset - not applicable here
+                        (uint)content.Length
+                    );
+                    
+                    var message = new PstMessage(_parentMessage._pstFile, nodeEntry);
+                    
+                    // Set basic properties from the parsed MimeMessage
+                    message.Subject = mimeMessage.Subject ?? "";
+                    
+                    if (mimeMessage.From.FirstOrDefault() is MailboxAddress from)
+                    {
+                        message.SenderName = from.Name ?? "";
+                        message.SenderEmail = from.Address ?? "";
+                    }
+                    
+                    message.SentDate = mimeMessage.Date.DateTime;
+                    message.ReceivedDate = DateTime.Now;
+                    
+                    message.Recipients = new List<string>();
+                    foreach (var to in mimeMessage.To.OfType<MailboxAddress>())
+                    {
+                        message.Recipients.Add(to.Address);
+                    }
+                    
+                    if (mimeMessage.TextBody != null)
+                    {
+                        message.BodyText = mimeMessage.TextBody;
+                    }
+                    
+                    if (mimeMessage.HtmlBody != null)
+                    {
+                        message.BodyHtml = mimeMessage.HtmlBody;
+                    }
+                    
+                    // Store the raw content
+                    message._rawContent = content;
+                    message._parsedMimeMessage = mimeMessage;
+                    
+                    // Check for attachments
+                    if (mimeMessage.Attachments.Any())
+                    {
+                        message.HasAttachments = true;
+                        
+                        // For consistency, we'll extract nested attachment names
+                        foreach (var attachment in mimeMessage.Attachments)
+                        {
+                            string filename = attachment.ContentDisposition?.FileName ?? 
+                                              attachment.ContentType.Name ?? 
+                                              "attachment";
+                            message.AttachmentNames.Add(filename);
+                        }
+                    }
+                    
+                    return message;
+                }
+                catch (Exception ex)
+                {
+                    // Log the error (in a real implementation)
+                    Console.WriteLine($"Error parsing nested email: {ex.Message}");
+                    return null;
+                }
+            }
 
-            internal Attachment()
+            internal Attachment(PstMessage parentMessage)
             {
                 Filename = "";
                 LongFilename = "";
                 ContentType = "application/octet-stream";
                 Size = 0;
                 IsEmbedded = false;
+                _parentMessage = parentMessage;
             }
 
             internal Func<byte[]>? _contentLoader;
             private byte[] _content = Array.Empty<byte>();
             private bool _contentLoaded = false;
+            private readonly PstMessage _parentMessage;
         }
 
         /// <summary>
@@ -432,6 +600,12 @@ namespace PstToolkit
             {
                 var result = new List<Attachment>();
                 
+                // If message doesn't have attachments, return empty list
+                if (!HasAttachments)
+                {
+                    return result;
+                }
+                
                 // Calculate the attachment table node ID based on this message's node ID
                 ushort messageNid = (ushort)(_nodeEntry.NodeId & 0x1F);
                 uint attachmentTableNodeId = (uint)(PstNodeTypes.NID_TYPE_ATTACHMENT_TABLE << 5) | messageNid;
@@ -442,29 +616,78 @@ namespace PstToolkit
                 
                 if (attachmentTableNode != null)
                 {
-                    // In a real implementation, this would:
-                    // 1. Read the attachment table rows
-                    // 2. Extract the attachment node IDs
-                    // 3. Load each attachment's properties
+                    // Calculate the base node ID for attachment data
+                    uint baseAttachmentNodeId = (uint)(PstNodeTypes.NID_TYPE_ATTACHMENT_OBJECT << 5) | messageNid;
                     
-                    // For this implementation, we'll create mock attachments if HasAttachments is true
-                    
-                    if (HasAttachments)
+                    // For PST files, attachments are typically numbered sequentially
+                    // Try to load a reasonable number of potential attachments (10 max)
+                    for (int i = 0; i < 10; i++)
                     {
-                        // Create 1-2 sample attachments
-                        int attachmentCount = new Random().Next(1, 3);
+                        // Calculate the attachment ID for this entry
+                        uint attachmentId = baseAttachmentNodeId + (uint)i;
                         
-                        for (int i = 0; i < attachmentCount; i++)
+                        // Find the attachment node
+                        var attachmentNode = bTree.FindNodeByNid(attachmentId);
+                        
+                        if (attachmentNode != null)
                         {
-                            uint attachmentId = _nodeEntry.NodeId + 0x10000 + (uint)i;
+                            // Get the property context for this attachment node
+                            var propContext = new PropertyContext(_pstFile, attachmentNode);
                             
-                            var attachment = new Attachment
+                            // Get attachment properties
+                            string filename = propContext.GetString((ushort)PstStructure.PropertyIds.PidTagAttachFilename) ?? "";
+                            string longFilename = propContext.GetString((ushort)PstStructure.PropertyIds.PidTagAttachLongFilename) ?? "";
+                            
+                            // If filenames are empty or missing, try getting display name
+                            if (string.IsNullOrEmpty(filename) && string.IsNullOrEmpty(longFilename))
                             {
-                                Filename = $"attachment{i + 1}.txt",
-                                LongFilename = $"attachment{i + 1}.txt",
-                                ContentType = "text/plain",
-                                Size = 1024,
-                                IsEmbedded = false
+                                filename = propContext.GetString((ushort)PstStructure.PropertyIds.PidTagDisplayName) ?? $"Attachment{i+1}";
+                                longFilename = filename;
+                            }
+                            
+                            // Use short filename if long is missing
+                            if (string.IsNullOrEmpty(longFilename))
+                            {
+                                longFilename = filename;
+                            }
+                            
+                            // Use long filename if short is missing
+                            if (string.IsNullOrEmpty(filename))
+                            {
+                                filename = Path.GetFileName(longFilename);
+                            }
+                            
+                            // If we still don't have a filename, generate one
+                            if (string.IsNullOrEmpty(filename))
+                            {
+                                filename = $"Attachment{i+1}";
+                                longFilename = filename;
+                            }
+                            
+                            // Get content type
+                            string contentType = propContext.GetString((ushort)PstStructure.PropertyIds.PidTagAttachMimeTag) ?? "application/octet-stream";
+                            
+                            // Get size
+                            long size = propContext.GetInt32((ushort)PstStructure.PropertyIds.PidTagAttachmentSize) ?? 0;
+                            
+                            // Check if it's an embedded message
+                            int attachMethod = propContext.GetInt32((ushort)PstStructure.PropertyIds.PidTagAttachMethod) ?? 1;
+                            bool isEmbedded = attachMethod == 5; // ATTACH_EMBEDDED_MSG
+                            
+                            // If it's an embedded message and no content type was specified, set it
+                            if (isEmbedded && contentType == "application/octet-stream")
+                            {
+                                contentType = "message/rfc822";
+                            }
+                            
+                            // Create the attachment
+                            var attachment = new Attachment(this)
+                            {
+                                Filename = filename,
+                                LongFilename = longFilename,
+                                ContentType = contentType,
+                                Size = size,
+                                IsEmbedded = isEmbedded
                             };
                             
                             // Set up the content loader to load the attachment content when requested
@@ -472,6 +695,80 @@ namespace PstToolkit
                             
                             result.Add(attachment);
                         }
+                        else
+                        {
+                            // If we can't find an attachment at this index, we're probably done
+                            // PST files usually store attachments in sequential node IDs
+                            if (i > 0)
+                                break;
+                        }
+                    }
+                }
+                
+                // Try another approach if we couldn't find attachments the normal way but HasAttachments is true
+                if (result.Count == 0)
+                {
+                    // Use direct property access to find attachment references
+                    var attachmentIds = GetAttachmentNodeIds();
+                    
+                    foreach (var attachId in attachmentIds)
+                    {
+                        var attachNode = bTree.FindNodeByNid(attachId);
+                        if (attachNode == null)
+                            continue;
+                            
+                        var propContext = new PropertyContext(_pstFile, attachNode);
+                        
+                        // Get attachment properties similar to above
+                        string filename = propContext.GetString((ushort)PstStructure.PropertyIds.PidTagAttachFilename) ?? "";
+                        string longFilename = propContext.GetString((ushort)PstStructure.PropertyIds.PidTagAttachLongFilename) ?? "";
+                        
+                        if (string.IsNullOrEmpty(filename) && string.IsNullOrEmpty(longFilename))
+                        {
+                            filename = propContext.GetString((ushort)PstStructure.PropertyIds.PidTagDisplayName) ?? $"Attachment{result.Count+1}";
+                            longFilename = filename;
+                        }
+                        
+                        if (string.IsNullOrEmpty(longFilename)) longFilename = filename;
+                        if (string.IsNullOrEmpty(filename)) filename = Path.GetFileName(longFilename);
+                        
+                        if (string.IsNullOrEmpty(filename))
+                        {
+                            filename = $"Attachment{result.Count+1}";
+                            longFilename = filename;
+                        }
+                        
+                        string contentType = propContext.GetString((ushort)PstStructure.PropertyIds.PidTagAttachMimeTag) ?? "application/octet-stream";
+                        long size = propContext.GetInt32((ushort)PstStructure.PropertyIds.PidTagAttachmentSize) ?? 0;
+                        int attachMethod = propContext.GetInt32((ushort)PstStructure.PropertyIds.PidTagAttachMethod) ?? 1;
+                        bool isEmbedded = attachMethod == 5; // ATTACH_EMBEDDED_MSG
+                        
+                        if (isEmbedded && contentType == "application/octet-stream")
+                        {
+                            contentType = "message/rfc822";
+                        }
+                        
+                        var attachment = new Attachment(this)
+                        {
+                            Filename = filename,
+                            LongFilename = longFilename,
+                            ContentType = contentType,
+                            Size = size,
+                            IsEmbedded = isEmbedded
+                        };
+                        
+                        attachment._contentLoader = () => LoadAttachmentContent(attachId);
+                        result.Add(attachment);
+                    }
+                }
+                
+                // Update AttachmentNames list from the found attachments
+                if (result.Count > 0)
+                {
+                    AttachmentNames = new List<string>();
+                    foreach (var attachment in result)
+                    {
+                        AttachmentNames.Add(attachment.Filename);
                     }
                 }
                 
@@ -481,6 +778,190 @@ namespace PstToolkit
             {
                 throw new PstException("Error loading attachments", ex);
             }
+        }
+        
+        /// <summary>
+        /// Gets the attachment node IDs for this message.
+        /// </summary>
+        /// <returns>A list of attachment node IDs.</returns>
+        private List<uint> GetAttachmentNodeIds()
+        {
+            var result = new List<uint>();
+            
+            try
+            {
+                // Calculate the base mask for attachment nodes
+                ushort messageNid = (ushort)(_nodeEntry.NodeId & 0x1F);
+                uint baseAttachmentNodeId = (uint)(PstNodeTypes.NID_TYPE_ATTACHMENT_OBJECT << 5) | messageNid;
+                
+                // Try to find attachments with sequential IDs (common in PST files)
+                for (uint i = 0; i < 20; i++)  // Try a reasonable max number
+                {
+                    uint attachmentId = baseAttachmentNodeId + i;
+                    if (_pstFile.GetNodeEntry(attachmentId) != null)
+                    {
+                        result.Add(attachmentId);
+                    }
+                    else if (i > 0)
+                    {
+                        // If we have found at least one attachment and then find a gap,
+                        // we're probably done (PST files usually store attachments with sequential IDs)
+                        break;
+                    }
+                }
+            }
+            catch (Exception)
+            {
+                // Ignore errors in attachment ID discovery, since this is a fallback method
+            }
+            
+            return result;
+        }
+        
+        /// <summary>
+        /// Gets all nested email messages from the attachments.
+        /// </summary>
+        /// <returns>A list of email messages that were attachments to this message.</returns>
+        public List<PstMessage> GetNestedEmailAttachments()
+        {
+            var result = new List<PstMessage>();
+            
+            try
+            {
+                // Get all attachments
+                var attachments = GetAttachments();
+                
+                // Filter for email attachments
+                foreach (var attachment in attachments)
+                {
+                    if (attachment.IsEmailMessage)
+                    {
+                        var emailMessage = attachment.GetAsEmailMessage();
+                        if (emailMessage != null)
+                        {
+                            result.Add(emailMessage);
+                        }
+                    }
+                }
+                
+                return result;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error getting nested email attachments: {ex.Message}");
+                return result;
+            }
+        }
+        
+        /// <summary>
+        /// Extracts all email attachments, including nested ones, to EML files in the specified directory.
+        /// </summary>
+        /// <param name="outputDirectory">The directory to save the extracted email files.</param>
+        /// <param name="recursionLevel">The current recursion level, used internally to prevent infinite recursion.</param>
+        /// <param name="parentPath">The parent path prefix, used internally for nested emails.</param>
+        /// <returns>The number of emails extracted.</returns>
+        public int ExtractAllEmailAttachments(string outputDirectory, int recursionLevel = 0, string parentPath = "")
+        {
+            // Prevent infinite recursion by limiting depth
+            if (recursionLevel > 5)
+            {
+                return 0;
+            }
+            
+            int extractedCount = 0;
+            
+            try
+            {
+                // Ensure the output directory exists
+                if (!Directory.Exists(outputDirectory))
+                {
+                    Directory.CreateDirectory(outputDirectory);
+                }
+                
+                // Get all email attachments
+                var emailAttachments = GetNestedEmailAttachments();
+                
+                foreach (var emailMsg in emailAttachments)
+                {
+                    try
+                    {
+                        string prefix = string.IsNullOrEmpty(parentPath) ? "" : parentPath + "_";
+                        string filenameBase = $"{prefix}{emailMsg.Subject}_{emailMsg.SentDate:yyyy-MM-dd_HHmmss}";
+                        
+                        // Remove invalid filename characters
+                        foreach (var invalidChar in Path.GetInvalidFileNameChars())
+                        {
+                            filenameBase = filenameBase.Replace(invalidChar, '_');
+                        }
+                        
+                        // Export the email as EML
+                        string emlFilePath = Path.Combine(outputDirectory, filenameBase + ".eml");
+                        
+                        // Write the content to the file
+                        var mimeMessage = emailMsg.ToMimeMessage();
+                        using (var stream = new FileStream(emlFilePath, FileMode.Create))
+                        {
+                            mimeMessage.WriteTo(stream);
+                        }
+                        
+                        extractedCount++;
+                        
+                        // Recursively extract nested email attachments
+                        string nestedPrefix = string.IsNullOrEmpty(prefix) ? "Nested" : prefix + "Nested";
+                        extractedCount += emailMsg.ExtractAllEmailAttachments(
+                            outputDirectory, 
+                            recursionLevel + 1, 
+                            nestedPrefix);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Error extracting nested email: {ex.Message}");
+                    }
+                }
+                
+                return extractedCount;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error extracting email attachments: {ex.Message}");
+                return extractedCount;
+            }
+        }
+        
+        /// <summary>
+        /// Adds another email message as an attachment to this message.
+        /// </summary>
+        /// <param name="emailMessage">The email message to attach.</param>
+        /// <returns>The newly added attachment.</returns>
+        public Attachment AddEmailAttachment(PstMessage emailMessage)
+        {
+            // Convert the email to a MimeMessage
+            var mimeMessage = emailMessage.ToMimeMessage();
+            
+            // Get the raw content
+            byte[] content;
+            using (var memStream = new MemoryStream())
+            {
+                mimeMessage.WriteTo(memStream);
+                content = memStream.ToArray();
+            }
+            
+            // Create a filename based on the subject
+            string filename = !string.IsNullOrEmpty(emailMessage.Subject) 
+                ? emailMessage.Subject.Trim() 
+                : "Email Message";
+                
+            // Sanitize the filename
+            foreach (var invalidChar in Path.GetInvalidFileNameChars())
+            {
+                filename = filename.Replace(invalidChar, '_');
+            }
+            
+            // Add timestamp to make the filename unique
+            filename = $"{filename}_{DateTime.Now:yyyyMMdd_HHmmss}.eml";
+            
+            // Add the attachment with MIME type for email messages
+            return AddAttachment(filename, content, "message/rfc822");
         }
         
         /// <summary>
@@ -518,7 +999,7 @@ namespace PstToolkit
                 var nodeEntry = bTree.AddNode(attachmentId, 0, _nodeEntry.NodeId, content);
                 
                 // Create the attachment object
-                var attachment = new Attachment
+                var attachment = new Attachment(this)
                 {
                     Filename = Path.GetFileName(filename),
                     LongFilename = filename,
@@ -602,17 +1083,112 @@ namespace PstToolkit
         {
             try
             {
-                // In a real implementation, this would:
-                // 1. Find the attachment node
-                // 2. Read the attachment data
+                // Find the attachment node in the PST file
+                var attachmentNode = _pstFile.GetNodeEntry(attachmentId);
+                if (attachmentNode == null)
+                {
+                    throw new PstException($"Attachment node {attachmentId:X} not found");
+                }
                 
-                // For this implementation, we'll generate some sample content
-                string content = $"This is the content of attachment {attachmentId}.\r\n";
-                return Encoding.UTF8.GetBytes(content);
+                // Get the property context for the attachment
+                var propContext = new PropertyContext(_pstFile, attachmentNode);
+                
+                // Get the attachment method (embedded, referenced, etc.)
+                int attachMethod = propContext.GetInt32((ushort)PstStructure.PropertyIds.PidTagAttachMethod) ?? 1; // Default to embedded
+                
+                // For embedded attachments (ATTACH_BY_VALUE, method=1), the data is in the node itself
+                if (attachMethod == 1)
+                {
+                    // Get the data from the node's data block
+                    if (attachmentNode.DataSize > 0 && attachmentNode.DataOffset > 0)
+                    {
+                        return _pstFile.ReadBlock(attachmentNode.DataOffset, attachmentNode.DataSize);
+                    }
+                    
+                    // If no data in the node, look for separate attachment data node
+                    // Calculate the attachment data node ID based on this attachment's node ID
+                    ushort attachNid = (ushort)(attachmentId & 0x1F);
+                    uint attachDataNodeId = (uint)(PstNodeTypes.NID_TYPE_ATTACHMENT_DATA << 5) | attachNid;
+                    
+                    // Find the attachment data node
+                    var attachDataNode = _pstFile.GetNodeEntry(attachDataNodeId);
+                    if (attachDataNode != null && attachDataNode.DataSize > 0 && attachDataNode.DataOffset > 0)
+                    {
+                        return _pstFile.ReadBlock(attachDataNode.DataOffset, attachDataNode.DataSize);
+                    }
+                    
+                    // If we still have no data, check for the PidTagAttachDataBinary property
+                    var attachData = propContext.GetBinary((ushort)PstStructure.PropertyIds.PidTagAttachDataBinary);
+                    if (attachData != null && attachData.Length > 0)
+                    {
+                        return attachData;
+                    }
+                }
+                // For referenced attachments (ATTACH_BY_REFERENCE, method=2 or method=3), the data is in a separate file
+                else if (attachMethod == 2 || attachMethod == 3)
+                {
+                    // Get the attachment pathname from the property
+                    var pathName = propContext.GetString((ushort)PstStructure.PropertyIds.PidTagAttachPathname);
+                    if (!string.IsNullOrEmpty(pathName) && File.Exists(pathName))
+                    {
+                        return File.ReadAllBytes(pathName);
+                    }
+                    
+                    // If path not found, check PidTagAttachLongPathname
+                    pathName = propContext.GetString((ushort)PstStructure.PropertyIds.PidTagAttachLongPathname);
+                    if (!string.IsNullOrEmpty(pathName) && File.Exists(pathName))
+                    {
+                        return File.ReadAllBytes(pathName);
+                    }
+                }
+                // For OLE attachments (ATTACH_EMBEDDED_MSG, method=5), the attachment is another message
+                else if (attachMethod == 5)
+                {
+                    // Calculate the embedded message node ID
+                    ushort attachNid = (ushort)(attachmentId & 0x1F);
+                    uint embeddedMsgNodeId = (uint)(PstNodeTypes.NID_TYPE_ATTACHMENT_OBJECT << 5) | attachNid;
+                    
+                    // Find the embedded message node
+                    var embeddedMsgNode = _pstFile.GetNodeEntry(embeddedMsgNodeId);
+                    if (embeddedMsgNode != null)
+                    {
+                        // Create a PstMessage for the embedded message
+                        var embeddedMsg = new PstMessage(_pstFile, embeddedMsgNode);
+                        
+                        // Get the raw content of the embedded message
+                        return embeddedMsg.GetRawContent();
+                    }
+                }
+                
+                // If all above methods failed, look for a data blob associated with this attachment
+                var dataBlob = propContext.GetBinary((ushort)PstStructure.PropertyIds.PidTagAttachDataObject);
+                if (dataBlob != null && dataBlob.Length > 0)
+                {
+                    return dataBlob;
+                }
+                
+                // If we still can't find the data, look for other related property types
+                var dataIds = new uint[]
+                {
+                    PstStructure.PropertyIds.PidTagAttachData,
+                    PstStructure.PropertyIds.PidTagAttachDataBinary
+                };
+                
+                foreach (var propId in dataIds)
+                {
+                    var data = propContext.GetBinary((ushort)propId);
+                    if (data != null && data.Length > 0)
+                    {
+                        return data;
+                    }
+                }
+                
+                // If we get here and can't find any data, throw an exception
+                throw new PstException($"No attachment data found for attachment ID {attachmentId:X}");
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not PstException)
             {
-                throw new PstException($"Failed to load attachment content for ID {attachmentId}", ex);
+                throw new PstException($"Failed to load attachment content for ID {attachmentId:X}", ex);
             }
         }
 

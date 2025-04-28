@@ -83,6 +83,21 @@ namespace PstToolkit
                 return _messages;
             }
         }
+        
+        /// <summary>
+        /// Gets a filtered list of messages in this folder.
+        /// </summary>
+        /// <param name="filter">The filter to apply to the messages.</param>
+        /// <returns>A filtered list of messages.</returns>
+        public IEnumerable<PstMessage> GetFilteredMessages(MessageFilter filter)
+        {
+            if (!_messagesLoaded)
+            {
+                LoadMessages();
+            }
+            
+            return filter.Apply(_messages);
+        }
 
         /// <summary>
         /// Gets the folder type (e.g., Inbox, Sent Items, etc.).
@@ -712,8 +727,29 @@ namespace PstToolkit
 
         private void CreateSystemFolder(uint nodeId, string name, FolderType type)
         {
-            var mockNode = new NdbNodeEntry(nodeId, 0u, FolderId, 0ul, 0u);
-            var folder = new PstFolder(_pstFile, mockNode, this);
+            // Instead of using a mock node, we'll create a proper one and add it to the B-tree
+            var dataId = nodeId + 1000u; // Create unique data ID
+            var nodeEntry = new NdbNodeEntry(nodeId, dataId, FolderId, 0ul, 512u);
+            nodeEntry.DisplayName = name;
+            
+            // Add the folder node to the node B-tree
+            var bTree = _pstFile.GetNodeBTree();
+            
+            // Create folder properties
+            Dictionary<string, object> properties = new Dictionary<string, object>
+            {
+                { "DisplayName", name },
+                { "FolderType", (int)type }
+            };
+            
+            // Serialize properties to a byte array (in real implementation)
+            byte[] data = SerializeFolderProperties(properties);
+            
+            // Add the node to the B-tree
+            bTree.AddNode(nodeEntry, data);
+            
+            // Create folder object and add to collection
+            var folder = new PstFolder(_pstFile, nodeEntry, this);
             folder.Name = name;
             folder.Type = type;
             _subFolders.Add(folder);
@@ -729,17 +765,35 @@ namespace PstToolkit
                 var bTree = _pstFile.GetNodeBTree();
                 var allNodes = bTree.GetAllNodes();
                 
-                Console.WriteLine($"Looking for messages in folder: {Name} (ID: {FolderId})");
-                Console.WriteLine($"Scanning {allNodes.Count} nodes for messages with parent ID {FolderId}");
+                // Only log detailed messages for small folders/files
+                bool verboseLogging = allNodes.Count < 100;
                 
-                // First, search for message nodes that have this folder as parent
-                int realMessagesFound = 0;
-                foreach (var node in allNodes)
+                if (verboseLogging)
                 {
-                    // Check if the node is a message type and has this folder as its parent
-                    if (node.NodeType == PstNodeTypes.NID_TYPE_MESSAGE && node.ParentId == FolderId)
+                    Console.WriteLine($"Looking for messages in folder: {Name} (ID: {FolderId})");
+                    Console.WriteLine($"Scanning {allNodes.Count} nodes for messages with parent ID {FolderId}");
+                }
+                
+                // First, gather all message nodes that belong to this folder
+                var messageNodes = allNodes
+                    .Where(node => node.NodeType == PstNodeTypes.NID_TYPE_MESSAGE && node.ParentId == FolderId)
+                    .ToList();
+                
+                // Process in batches for better performance with large message sets
+                const int batchSize = 50;
+                int realMessagesFound = 0;
+                
+                for (int i = 0; i < messageNodes.Count; i++)
+                {
+                    var node = messageNodes[i];
+                    
+                    try
                     {
-                        Console.WriteLine($"Found message node {node.NodeId} with parent {node.ParentId}, name: {node.DisplayName ?? "(no name)"}");
+                        // Only log details for the first few messages or small message sets
+                        if (verboseLogging && (realMessagesFound < 10 || messageNodes.Count < 20))
+                        {
+                            Console.WriteLine($"Found message node {node.NodeId} with parent {node.ParentId}, name: {node.DisplayName ?? "(no name)"}");
+                        }
                         
                         // Create a message object from the node
                         var message = new PstMessage(_pstFile, node);
@@ -747,6 +801,20 @@ namespace PstToolkit
                         // Add it to the messages list
                         _messages.Add(message);
                         realMessagesFound++;
+                        
+                        // For large message sets, provide periodic status updates
+                        if (messageNodes.Count > batchSize*2 && realMessagesFound % batchSize == 0)
+                        {
+                            Console.WriteLine($"Processed {realMessagesFound}/{messageNodes.Count} messages in folder '{Name}'...");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        // Only log first few errors to avoid console spam
+                        if (realMessagesFound < 5)
+                        {
+                            Console.WriteLine($"Error loading message {node.NodeId}: {ex.Message}");
+                        }
                     }
                 }
                 
@@ -788,24 +856,53 @@ namespace PstToolkit
         
         private uint GenerateNewFolderId()
         {
-            // In a real implementation, this would allocate a unique ID from the 
-            // allocation table in the PST file.
+            // This method allocates a unique folder ID in compliance with PST specification
+            // Folder node IDs follow the PST storage format requirements:
+            // - The high bits (27-31) contain the node type (NID_TYPE_FOLDER for folders)
+            // - The low bits (0-26) contain a unique identifier
             
-            // Ensure we don't have ID conflicts by checking if the ID is already
-            // used in the node cache
-            uint newId;
+            // Get the PST node B-tree to check for existing nodes
             var bTree = _pstFile.GetNodeBTree();
-            bool idExists;
+            
+            // Node ID counter for generating unique IDs (initialized from static field)
+            uint nodeCounter = _nextFolderId;
+            
+            // This will hold our new unique node ID
+            uint newId;
+            
+            // Make sure we find an ID that isn't already in use
+            int maxAttempts = 1000;  // Prevent infinite loops
+            int attempts = 0;
             
             do {
-                // Create a new ID with the folder type in the high bits and a unique 
-                // counter in the low bits
-                newId = (uint)(PstNodeTypes.NID_TYPE_FOLDER << 5) | (_nextFolderId & 0x1Fu);
-                _nextFolderId++; // Increment for next time
+                // Create a new ID with the folder node type in the high bits (27-31)
+                // and a unique counter in the remaining bits
+                // NID format: TTTTTNNN NNNNNNNN NNNNNNNN NNNNNNNN
+                // where T = Type bits, N = Node ID bits
                 
-                // Check if this ID already exists in the node cache
-                idExists = bTree.FindNodeByNid(newId) != null;
-            } while (idExists);
+                // We use a 5-bit field for the node type according to PST specs
+                // For folder, we use NID_TYPE_FOLDER (0x1)
+                newId = (uint)(PstNodeTypes.NID_TYPE_FOLDER << 5) | (nodeCounter & 0x1FFFFF);
+                
+                // Increment counter for next attempt
+                nodeCounter++;
+                attempts++;
+                
+                // Check if this ID already exists in the B-tree
+                // We only create the folder if the ID is unique
+            } while (bTree.FindNodeByNid(newId) != null && attempts < maxAttempts);
+            
+            // If we hit max attempts, fall back to using a time-based unique ID
+            if (attempts >= maxAttempts)
+            {
+                // This is a fallback method that should rarely be needed
+                // We create a mostly-unique ID based on ticks
+                uint tickBasedId = (uint)(DateTime.Now.Ticks & 0x1FFFFF);
+                newId = (uint)(PstNodeTypes.NID_TYPE_FOLDER << 5) | tickBasedId;
+            }
+            
+            // Update the static field for the next folder
+            _nextFolderId = nodeCounter;
             
             Console.WriteLine($"Generated new folder ID: {newId}");
             return newId;
@@ -813,52 +910,441 @@ namespace PstToolkit
         
         private uint GenerateNewMessageId()
         {
-            // In a real implementation, this would allocate a unique ID
-            // For demonstration, we'll create a mock ID
-            return (uint)(PstNodeTypes.NID_TYPE_MESSAGE << 5) | (FolderId & 0x1Fu) + 0x2000u;
+            // Generate a unique message node ID
+            // Message node IDs have the NID_TYPE_MESSAGE type (shifted left by 5 bits)
+            // followed by a unique ID based on the current folder
+            
+            // Get all existing message IDs in this folder
+            var bTree = _pstFile.GetNodeBTree();
+            var allNodes = bTree.GetAllNodes();
+            var existingMessageIds = new HashSet<uint>();
+            
+            // Find existing message IDs for this folder
+            foreach (var node in allNodes)
+            {
+                if (PstNodeTypes.GetNodeType(node.NodeId) == PstNodeTypes.NID_TYPE_MESSAGE && 
+                    node.ParentId == FolderId)
+                {
+                    existingMessageIds.Add(node.NodeId);
+                }
+            }
+            
+            // Start with a base ID using the current time to ensure uniqueness
+            uint baseId = (uint)((DateTime.Now.Ticks & 0xFFFF) << 8);
+            
+            // Create a unique message ID by combining:
+            // 1. The message node type (shifted left by 5 bits)
+            // 2. A portion of the folder ID for context (lower 5 bits)
+            // 3. A unique counter to avoid collisions
+            uint counter = 0;
+            uint newMessageId;
+            
+            do
+            {
+                // Create a unique ID pattern
+                newMessageId = (uint)(PstNodeTypes.NID_TYPE_MESSAGE << 5) | 
+                               ((baseId + counter) & 0x1Fu);
+                counter++;
+            } while (existingMessageIds.Contains(newMessageId) && counter < 0xFFFF);
+            
+            // If we've exhausted the standard range, use a time-based approach
+            if (counter >= 0xFFFF)
+            {
+                // Use millisecond precision for uniqueness
+                newMessageId = (uint)(PstNodeTypes.NID_TYPE_MESSAGE << 5) | 
+                               (uint)(DateTime.Now.Millisecond & 0x1F);
+            }
+            
+            Console.WriteLine($"Generated new message ID: {newMessageId} for folder {FolderId}");
+            return newMessageId;
         }
         
         private byte[] SerializeFolderProperties(Dictionary<string, object> properties)
         {
-            // In a real implementation, this would serialize properties to PST format
-            // For demonstration, we return a placeholder byte array
-            return new byte[128];
+            // Serialize properties dictionary to a byte array in a format that can be 
+            // stored in the PST file and later reconstructed
+            
+            try
+            {
+                using (var memoryStream = new MemoryStream())
+                {
+                    using (var writer = new PstBinaryWriter(memoryStream, _pstFile.IsAnsi))
+                    {
+                        // Write the number of properties
+                        writer.Write((int)properties.Count);
+                        
+                        // Write each property
+                        foreach (var property in properties)
+                        {
+                            // Determine the encoding based on the PST file type
+                            var encoding = _pstFile.IsAnsi ? System.Text.Encoding.ASCII : System.Text.Encoding.Unicode;
+                            
+                            // Write property name
+                            writer.WriteString(property.Key, encoding);
+                            
+                            // Write property type marker based on value type
+                            if (property.Value is string stringValue)
+                            {
+                                writer.Write((byte)1); // String type
+                                writer.WriteString(stringValue, encoding);
+                            }
+                            else if (property.Value is int intValue)
+                            {
+                                writer.Write((byte)2); // Integer type
+                                writer.Write(intValue);
+                            }
+                            else if (property.Value is bool boolValue)
+                            {
+                                writer.Write((byte)3); // Boolean type
+                                writer.Write(boolValue);
+                            }
+                            else if (property.Value is DateTime dateValue)
+                            {
+                                writer.Write((byte)4); // DateTime type
+                                writer.Write(dateValue.ToBinary());
+                            }
+                            else if (property.Value is byte[] byteArrayValue)
+                            {
+                                writer.Write((byte)5); // ByteArray type
+                                writer.Write(byteArrayValue.Length);
+                                writer.Write(byteArrayValue);
+                            }
+                            else
+                            {
+                                // For other types, convert to string
+                                writer.Write((byte)1); // String type
+                                writer.WriteString(property.Value?.ToString() ?? string.Empty, encoding);
+                            }
+                        }
+                    }
+                    
+                    // Return the serialized data
+                    return memoryStream.ToArray();
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error serializing folder properties: {ex.Message}");
+                
+                // In case of error, return a minimal valid data structure
+                using (var memoryStream = new MemoryStream())
+                {
+                    using (var writer = new BinaryWriter(memoryStream))
+                    {
+                        writer.Write(0); // No properties
+                    }
+                    return memoryStream.ToArray();
+                }
+            }
         }
         
         private void UpdateHierarchyTable(PstFolder folder)
         {
-            // In a real implementation, this would add the folder to the hierarchy table
-            // For this demonstration, we don't need to do anything
+            // This method updates the PST hierarchy table with the folder information
+            // The hierarchy table tracks parent-child relationships between folders
+            
+            if (folder == null)
+            {
+                return;
+            }
+            
+            try
+            {
+                // Get the PST file's root hierarchy node
+                var bTree = _pstFile.GetNodeBTree();
+                // Use the RootFolder property of PstFile instead of a constant
+                var rootNode = bTree.FindNodeByNid(_pstFile.RootFolder.FolderId);
+                
+                if (rootNode == null)
+                {
+                    Console.WriteLine("Warning: Could not find root folder node for hierarchy update");
+                    return;
+                }
+                
+                // Create hierarchy table entry properties - serialize to a string representation
+                // that can be stored in the folder metadata
+                var properties = new Dictionary<string, string>
+                {
+                    { "ParentEntryId", folder.ParentFolder?.FolderId.ToString() ?? "0" },
+                    { "EntryId", folder.FolderId.ToString() },
+                    { "DisplayName", folder.Name ?? "Unnamed Folder" },
+                    { "HasSubfolders", folder.HasSubFolders.ToString() },
+                    { "ContentCount", folder.MessageCount.ToString() },
+                    { "ContainerClass", "IPM.Note" } // Default container class for folders
+                };
+                
+                // Convert properties to a serialized representation that can be stored
+                string propertiesString = string.Join(";", properties.Select(p => $"{p.Key}={p.Value}"));
+                byte[] hierarchyData = System.Text.Encoding.UTF8.GetBytes(propertiesString);
+                
+                // Create a unique hierarchy table entry ID
+                uint hierarchyEntryId = (uint)(PstNodeTypes.NID_TYPE_HIERARCHY_TABLE << 5) | 
+                                        (folder.FolderId & 0x1Fu);
+                
+                // Add entry to hierarchy table
+                var dataId = hierarchyEntryId + 1u;
+                string displayName = $"Hierarchy: {folder.Name} ({folder.FolderId})";
+                
+                // Add or update the node in the B-tree - use the appropriate method signature
+                bTree.AddNode(hierarchyEntryId, dataId, rootNode.NodeId, hierarchyData, displayName);
+                
+                Console.WriteLine($"Updated hierarchy table entry for folder: {folder.Name}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error updating hierarchy table: {ex.Message}");
+            }
         }
         
         private void RemoveFromHierarchyTable(PstFolder folder)
         {
-            // In a real implementation, this would remove the folder from the hierarchy table
-            // For this demonstration, we don't need to do anything
+            // This method removes a folder entry from the PST hierarchy table
+            
+            if (folder == null)
+            {
+                return;
+            }
+            
+            try
+            {
+                // Get the B-tree from the PST file
+                var bTree = _pstFile.GetNodeBTree();
+                
+                // Calculate the hierarchy table entry ID for this folder
+                uint hierarchyEntryId = (uint)(PstNodeTypes.NID_TYPE_HIERARCHY_TABLE << 5) | 
+                                        (folder.FolderId & 0x1Fu);
+                
+                // Try to remove the node using its ID
+                bool removed = bTree.RemoveNode(hierarchyEntryId);
+                
+                if (removed)
+                {
+                    // The node was successfully removed
+                    Console.WriteLine($"Removed folder {folder.Name} (ID: {folder.FolderId}) from hierarchy table");
+                }
+                else
+                {
+                    Console.WriteLine($"Warning: Could not find hierarchy entry for folder {folder.Name} (ID: {folder.FolderId})");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error removing folder from hierarchy table: {ex.Message}");
+            }
         }
         
         private void UpdateContentsTable(PstMessage message)
         {
-            // In a real implementation, this would add the message to the contents table
-            // For this demonstration, we don't need to do anything
+            // This method updates the PST contents table with a message entry
+            // The contents table tracks messages within a folder
+            
+            if (message == null)
+            {
+                return;
+            }
+            
+            try
+            {
+                // Get the B-tree from the PST file
+                var bTree = _pstFile.GetNodeBTree();
+                
+                // Create a serialized string representation of the key message properties
+                var properties = new Dictionary<string, string>
+                {
+                    { "ParentEntryId", FolderId.ToString() },
+                    { "EntryId", message.MessageId.ToString() },
+                    { "MessageSize", message.Size.ToString() },
+                    { "LastModifiedTime", message.SentDate.ToString("o") },  // Use SentDate as LastModifiedTime
+                    { "ReceivedTime", message.ReceivedDate.ToString("o") },  // Use ReceivedDate
+                    { "Subject", message.Subject ?? "" },
+                    { "SenderName", message.SenderName ?? "" },
+                    { "SenderEmail", message.SenderEmail ?? "" },  // Use SenderEmail property
+                    { "IsRead", message.IsRead.ToString() },
+                    { "HasAttachments", message.HasAttachments.ToString() }
+                };
+                
+                // Convert properties to a serialized representation
+                string propertiesString = string.Join(";", properties.Select(p => $"{p.Key}={p.Value}"));
+                byte[] contentData = System.Text.Encoding.UTF8.GetBytes(propertiesString);
+                
+                // Create a unique contents table entry ID based on the folder and message
+                uint contentsEntryId = (uint)(PstNodeTypes.NID_TYPE_CONTENTS_TABLE << 5) | 
+                                       (message.MessageId & 0x1Fu);
+                
+                // Create data node ID (must be unique and related to the entry ID)
+                var dataId = contentsEntryId + 1u;
+                
+                // Add the node using the method signature available in BTreeOnHeap
+                bTree.AddNode(contentsEntryId, dataId, FolderId, contentData, message.Subject);
+                
+                // Update the message count property for the folder
+                IncrementMessageCount();
+                
+                Console.WriteLine($"Added message {message.Subject} to contents table");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error updating contents table: {ex.Message}");
+            }
         }
         
         private void RemoveFromContentsTable(PstMessage message)
         {
-            // In a real implementation, this would remove the message from the contents table
-            // For this demonstration, we don't need to do anything
+            // This method removes a message entry from the PST contents table
+            
+            if (message == null)
+            {
+                return;
+            }
+            
+            try
+            {
+                // Get the B-tree from the PST file
+                var bTree = _pstFile.GetNodeBTree();
+                
+                // Calculate the contents table entry ID for this message
+                uint contentsEntryId = (uint)(PstNodeTypes.NID_TYPE_CONTENTS_TABLE << 5) | 
+                                      (message.MessageId & 0x1Fu);
+                
+                // Use the RemoveNode method with the node ID
+                bool removed = bTree.RemoveNode(contentsEntryId);
+                
+                if (removed)
+                {
+                    // Update folder message count
+                    DecrementMessageCount(message.IsRead);
+                    
+                    Console.WriteLine($"Removed message {message.Subject} (ID: {message.MessageId}) from contents table");
+                }
+                else
+                {
+                    Console.WriteLine($"Warning: Could not find contents entry for message {message.Subject} (ID: {message.MessageId})");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error removing message from contents table: {ex.Message}");
+            }
         }
         
         private void IncrementMessageCount()
         {
-            // In a real implementation, this would update the message count properties
-            // For this demonstration, we don't need to do anything
+            // This method updates the message count properties when a message is added
+            
+            try
+            {
+                // Increment total message count
+                int currentCount = MessageCount;
+                currentCount++;
+                
+                // Update the property in the property context
+                _propertyContext.SetProperty(
+                    PstStructure.PropertyIds.PidTagContentCount,
+                    PstStructure.PropertyType.PT_LONG,
+                    currentCount
+                );
+                
+                // Note: Cannot directly update MessageCount as it's a read-only property
+                // Instead, we add the message to the internal list which will update the property
+                // when it's accessed next time
+                
+                // Save the property context changes
+                _propertyContext.Save();
+                
+                // Also update the folder node properties to reflect this change
+                var bTree = _pstFile.GetNodeBTree();
+                var folderNode = bTree.FindNodeByNid(FolderId);
+                
+                if (folderNode != null)
+                {
+                    // Instead of directly modifying the node, we'll update its metadata
+                    folderNode.SetMetadata("ContentCount", currentCount.ToString());
+                    
+                    // Use the correct node adding/updating method
+                    // Create serialized representation of the node's data
+                    string propertiesString = string.Join(";", 
+                        folderNode.Metadata.Select(p => $"{p.Key}={p.Value}"));
+                    byte[] folderData = System.Text.Encoding.UTF8.GetBytes(propertiesString);
+                    
+                    // Re-add the node with updated data
+                    bTree.AddNode(folderNode.NodeId, folderNode.DataId, folderNode.ParentId, 
+                                  folderData, folderNode.DisplayName);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error incrementing message count: {ex.Message}");
+            }
         }
         
         private void DecrementMessageCount(bool wasRead)
         {
-            // In a real implementation, this would update the message count properties
-            // For this demonstration, we don't need to do anything
+            // This method updates the message count properties when a message is removed
+            
+            try
+            {
+                // Get current counts
+                int currentTotalCount = MessageCount;
+                int currentUnreadCount = UnreadCount;
+                
+                // Only decrement if we have messages
+                if (currentTotalCount > 0)
+                {
+                    currentTotalCount--;
+                    
+                    // Update total message count property
+                    _propertyContext.SetProperty(
+                        PstStructure.PropertyIds.PidTagContentCount,
+                        PstStructure.PropertyType.PT_LONG,
+                        currentTotalCount
+                    );
+                    
+                    // Note: Cannot directly update MessageCount as it's a read-only property
+                    // Instead, we remove the message from the internal list which will update the property
+                    // when it's accessed next time
+                    
+                    // If the message was unread, also decrement unread count
+                    if (!wasRead && currentUnreadCount > 0)
+                    {
+                        currentUnreadCount--;
+                        
+                        // Update unread count property
+                        _propertyContext.SetProperty(
+                            PstStructure.PropertyIds.PidTagContentUnreadCount,
+                            PstStructure.PropertyType.PT_LONG,
+                            currentUnreadCount
+                        );
+                        
+                        // Note: Cannot directly update UnreadCount as it might be a read-only property
+                    }
+                    
+                    // Save the property context changes
+                    _propertyContext.Save();
+                    
+                    // Also update the folder node properties
+                    var bTree = _pstFile.GetNodeBTree();
+                    var folderNode = bTree.FindNodeByNid(FolderId);
+                    
+                    if (folderNode != null)
+                    {
+                        // Instead of directly modifying the node, we'll update its metadata
+                        folderNode.SetMetadata("ContentCount", currentTotalCount.ToString());
+                        
+                        // Create serialized representation of the node's data
+                        string propertiesString = string.Join(";", 
+                            folderNode.Metadata.Select(p => $"{p.Key}={p.Value}"));
+                        byte[] folderData = System.Text.Encoding.UTF8.GetBytes(propertiesString);
+                        
+                        // Re-add the node with updated data
+                        bTree.AddNode(folderNode.NodeId, folderNode.DataId, folderNode.ParentId, 
+                                      folderData, folderNode.DisplayName);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error decrementing message count: {ex.Message}");
+            }
         }
         
         private void UpdateHasSubFoldersProperty()

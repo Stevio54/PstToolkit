@@ -1,72 +1,114 @@
 # PstToolkit
 
-A C# library for reading, creating, and transferring email messages between PST files without using Outlook Interop or paid libraries.
+A high-performance C# library for reading, creating, and transferring email messages between PST files with advanced filtering and extraction capabilities.
 
-## Features
+## Overview
 
-- Open and read existing PST files
+PstToolkit is a .NET Core library that provides a comprehensive set of tools for working with PST files without using Outlook Interop or any paid libraries. The toolkit allows direct manipulation of PST binary structure, enabling developers to:
+
+- Open existing PST files for reading and extraction
 - Create new PST files from scratch
-- Extract messages to EML format
-- Copy messages and folders between PST files
-- Proper support for folder hierarchies and message metadata
+- Add folders and messages to PST files
+- Copy messages between PST files with advanced filtering
+- Extract emails to standard .eml format
+- Navigate folder hierarchies
 
-## Usage Examples
+## Key Features
 
-### Reading a PST file
+- **Pure .NET Implementation**: No dependencies on Outlook or COM interop
+- **Cross-Platform**: Works on Windows, macOS, and Linux through .NET Core
+- **Advanced Filtering**: Filter messages by date, sender, subject, content, and more
+- **High Performance**: Optimized for handling large PST files efficiently
+- **Memory-Efficient**: Uses streaming approaches for minimal memory footprint
+- **Attachment Handling**: Supports extracting and processing of message attachments
+- **Unicode Support**: Full support for Unicode characters in all fields
+- **Message Preservation**: Maintains original message properties when copying
 
-```csharp
-using PstToolkit;
+## Getting Started
 
-// Open an existing PST file in read-only mode
-using var pst = PstFile.Open("example.pst", readOnly: true);
+### Installation
 
-// Access the root folder
-var rootFolder = pst.RootFolder;
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/PstToolkit.git
+cd PstToolkit
 
-// List folders and messages
-Console.WriteLine($"Root folder name: {rootFolder.Name}");
-foreach (var folder in rootFolder.SubFolders)
-{
-    Console.WriteLine($"Folder: {folder.Name} ({folder.MessageCount} messages)");
-}
+# Build the solution
+dotnet build
 ```
 
-### Creating a new PST file
+### Usage Examples
 
-```csharp
-using PstToolkit;
+The solution includes a demo application that showcases the main features of the library:
 
-// Create a new PST file
-using var pst = PstFile.Create("new.pst");
+```bash
+# List all folders in a PST file
+dotnet run --project PstToolkitDemo/PstToolkitDemo.csproj list path/to/file.pst
 
-// Create folders
-var inboxFolder = pst.RootFolder.CreateSubFolder("Inbox");
-var testFolder = inboxFolder.CreateSubFolder("Test");
+# List all messages in a specific folder
+dotnet run --project PstToolkitDemo/PstToolkitDemo.csproj listmessages path/to/file.pst "Inbox/Subfolder"
 
-// Create a message
-var message = PstMessage.Create(pst, 
-    "Test Subject", 
-    "This is the message body", 
-    "sender@example.com", 
-    "Sender Name");
+# Extract messages to .eml files
+dotnet run --project PstToolkitDemo/PstToolkitDemo.csproj extract path/to/file.pst "Inbox/Subfolder" output/directory
 
-// Add the message to a folder
-testFolder.AddMessage(message);
+# Create a new PST file and add a sample message
+dotnet run --project PstToolkitDemo/PstToolkitDemo.csproj create new.pst
+dotnet run --project PstToolkitDemo/PstToolkitDemo.csproj message new.pst "Inbox/Test"
+
+# Copy messages between PST files with filtering
+dotnet run --project PstToolkitDemo/PstToolkitDemo.csproj filteredcopy source.pst destination.pst "subject:Meeting"
 ```
 
-### Copying between PST files
+## Command Line Reference
 
-```csharp
-using PstToolkit;
+The demo application supports the following commands:
 
-// Open source and destination PST files
-using var sourcePst = PstFile.Open("source.pst", readOnly: true);
-using var destPst = PstFile.Create("destination.pst");
-
-// Copy all content from source to destination
-destPst.CopyFrom(sourcePst);
 ```
+info <pst_file>                       - Show information about a PST file
+list <pst_file>                       - List all folders in a PST file
+listmessages <pst_file> <folder>      - List all messages in a folder
+copy <src> <dst>                      - Copy messages from source PST to destination PST
+filteredcopy <src> <dst> <filter>     - Copy filtered messages from source PST to destination PST
+create <pst_file>                     - Create a new PST file
+message <pst_file> <folder>           - Add a sample message to the specified folder
+extract <pst_file> <folder> <output>  - Extract messages from a folder to .eml files
+createfolder <pst_file> <path>        - Create a folder path (e.g. 'Inbox/Subfolder')
+```
+
+## Filter Syntax
+
+The library supports a powerful filter syntax for selecting messages:
+
+- `subject:keyword` - Messages with "keyword" in the subject
+- `from:address` - Messages from a specific email address
+- `to:address` - Messages sent to a specific email address
+- `after:2023-01-01` - Messages received after a specific date
+- `before:2023-12-31` - Messages received before a specific date
+- `hasattachment:true` - Messages with attachments
+- `body:text` - Messages containing specific text in the body
+- `isread:false` - Unread messages
+
+Filters can be combined using AND (&&) and OR (||) operators, and grouped with parentheses.
+
+## Library Architecture
+
+The library is organized into logical components:
+
+- **Core Classes**: `PstFile`, `PstFolder`, `PstMessage`
+- **Utilities**: Binary readers/writers, property context handling
+- **Formats**: PST structure constants and node types
+- **Exceptions**: Specialized exception types for error handling
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request

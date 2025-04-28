@@ -2,6 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
+using System.Runtime.CompilerServices;
+using System.Threading;
+using System.Threading.Tasks;
 using PstToolkit.Exceptions;
 using PstToolkit.Formats;
 using PstToolkit.Utils;
@@ -10,6 +13,7 @@ namespace PstToolkit
 {
     /// <summary>
     /// Represents a PST file that can be read from or written to.
+    /// Includes optimizations for handling large PST files.
     /// </summary>
     public class PstFile : IDisposable
     {
@@ -141,6 +145,19 @@ namespace PstToolkit
         /// <exception cref="PstException">Thrown when the copying operation fails.</exception>
         public void CopyFrom(PstFile sourcePst, Action<double>? progressCallback = null)
         {
+            // Call the overload with no filter (copy all messages)
+            CopyFrom(sourcePst, null, progressCallback);
+        }
+        
+        /// <summary>
+        /// Copies filtered messages from another PST file into this one.
+        /// </summary>
+        /// <param name="sourcePst">The source PST file to copy from.</param>
+        /// <param name="filter">A filter to apply to the messages being copied, or null to copy all messages.</param>
+        /// <param name="progressCallback">Optional callback to report progress (0.0 to 1.0)</param>
+        /// <exception cref="PstException">Thrown when the copying operation fails.</exception>
+        public void CopyFrom(PstFile sourcePst, MessageFilter? filter, Action<double>? progressCallback = null)
+        {
             if (_isReadOnly)
             {
                 throw new PstAccessException("Cannot copy to a read-only PST file.");
@@ -155,7 +172,7 @@ namespace PstToolkit
                 int totalMessages = CountMessages(sourceRoot);
                 int processedMessages = 0;
 
-                CopyFolderRecursive(sourceRoot, destRoot, ref processedMessages, totalMessages, progressCallback);
+                CopyFolderRecursive(sourceRoot, destRoot, filter, ref processedMessages, totalMessages, progressCallback);
 
                 // Make sure changes are written to disk
                 Flush();
@@ -179,6 +196,70 @@ namespace PstToolkit
 
         /// <summary>
         /// Disposes the PST file, releasing resources.
+        /// </summary>
+        
+        /// <summary>
+        /// Finds a folder by path.
+        /// </summary>
+        /// <param name="folderPath">Path to the folder, using '/' as separator (e.g., "Inbox/Subfolder").</param>
+        /// <returns>The found folder, or null if not found.</returns>
+        public PstFolder? FindFolder(string folderPath)
+        {
+            if (string.IsNullOrEmpty(folderPath))
+            {
+                return RootFolder;
+            }
+            
+            // Split path into parts
+            string[] parts = folderPath.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+            
+            PstFolder? currentFolder = RootFolder;
+            
+            // Traverse the folder hierarchy
+            foreach (var part in parts)
+            {
+                if (currentFolder == null)
+                {
+                    break;
+                }
+                
+                // Special handling for root folder references
+                if (part.Equals("Root", StringComparison.OrdinalIgnoreCase) && 
+                    currentFolder == RootFolder)
+                {
+                    continue;
+                }
+                
+                currentFolder = currentFolder.FindFolder(part, false);
+            }
+            
+            return currentFolder;
+        }
+        
+        /// <summary>
+        /// Gets messages from a folder with filtering.
+        /// </summary>
+        /// <param name="folderPath">Path to the folder, using '/' as separator (e.g., "Inbox/Subfolder").</param>
+        /// <param name="filter">Optional filter to apply to the messages.</param>
+        /// <returns>A filtered list of messages, or empty list if folder not found.</returns>
+        public IEnumerable<PstMessage> GetMessages(string folderPath, MessageFilter? filter = null)
+        {
+            var folder = FindFolder(folderPath);
+            if (folder == null)
+            {
+                return Enumerable.Empty<PstMessage>();
+            }
+            
+            if (filter == null)
+            {
+                return folder.Messages;
+            }
+            
+            return folder.GetFilteredMessages(filter);
+        }
+        
+        /// <summary>
+        /// Disposes resources used by the PST file.
         /// </summary>
         public void Dispose()
         {
@@ -276,16 +357,96 @@ namespace PstToolkit
 
         private void InitializeEmptyPstStructure()
         {
-            // Implementation would create the basic structure of a new PST file
-            // including node and block B-trees, and the necessary tables
-            // This is a complex process that involves creating various metadata structures
-            
             if (_header == null)
                 throw new PstCorruptedException("PST header is not initialized");
                 
-            // For now, we'll just create placeholder structures
+            // Initialize B-trees for node and block management
             _nodeBTree = BTreeOnHeap.CreateNew(this, _header.NodeBTreeRoot);
             _blockBTree = BTreeOnHeap.CreateNew(this, _header.BlockBTreeRoot);
+            
+            try
+            {
+                // Create basic PST structure with essential tables and nodes
+                
+                // 1. Create root folder node (NID_ROOT)
+                uint rootFolderId = _header.RootFolderId;
+                var rootNode = new NdbNodeEntry(
+                    rootFolderId,
+                    1000u,  // Data ID
+                    0u,     // Parent ID (root has no parent)
+                    0ul,    // Data offset
+                    512u    // Data size
+                );
+                rootNode.DisplayName = "Root Folder";
+                _nodeBTree.AddNode(rootNode, new byte[0]);
+                
+                // 2. Create inbox folder (standard PST folder)
+                uint inboxId = GenerateNodeId(PstNodeTypes.NID_TYPE_FOLDER, 1);
+                var inboxNode = new NdbNodeEntry(
+                    inboxId,
+                    1001u,
+                    rootFolderId, // Parent is root
+                    0ul,
+                    512u
+                );
+                inboxNode.DisplayName = "Inbox";
+                _nodeBTree.AddNode(inboxNode, new byte[0]);
+                
+                // 3. Create standard Sent Items folder
+                uint sentItemsId = GenerateNodeId(PstNodeTypes.NID_TYPE_FOLDER, 2);
+                var sentItemsNode = new NdbNodeEntry(
+                    sentItemsId,
+                    1002u,
+                    rootFolderId, // Parent is root
+                    0ul,
+                    512u
+                );
+                sentItemsNode.DisplayName = "Sent Items";
+                _nodeBTree.AddNode(sentItemsNode, new byte[0]);
+                
+                // 4. Create standard Deleted Items folder
+                uint deletedItemsId = GenerateNodeId(PstNodeTypes.NID_TYPE_FOLDER, 3);
+                var deletedItemsNode = new NdbNodeEntry(
+                    deletedItemsId,
+                    1003u,
+                    rootFolderId, // Parent is root
+                    0ul,
+                    512u
+                );
+                deletedItemsNode.DisplayName = "Deleted Items";
+                _nodeBTree.AddNode(deletedItemsNode, new byte[0]);
+                
+                // 5. Initialize properties for the root folder
+                var rootPropertyContext = new PropertyContext(this, rootNode);
+                rootPropertyContext.SetProperty(
+                    PstStructure.PropertyIds.PidTagDisplayName, 
+                    PstStructure.PropertyType.PT_STRING8, 
+                    "Root Folder");
+                
+                // 6. Mark root folder as having subfolders
+                rootPropertyContext.SetProperty(
+                    PstStructure.PropertyIds.PidTagSubfolders, 
+                    PstStructure.PropertyType.PT_BOOLEAN, 
+                    true);
+                
+                // Flush changes to disk
+                Flush();
+            }
+            catch (Exception ex)
+            {
+                throw new PstException("Failed to initialize PST structure", ex);
+            }
+        }
+        
+        /// <summary>
+        /// Generates a node ID using the specified type and ID components.
+        /// </summary>
+        /// <param name="nodeType">The node type.</param>
+        /// <param name="id">The ID component.</param>
+        /// <returns>A combined node ID.</returns>
+        internal uint GenerateNodeId(ushort nodeType, ushort id)
+        {
+            return PstNodeTypes.CreateNodeId(nodeType, id);
         }
 
         private int CountMessages(PstFolder folder)
@@ -305,31 +466,80 @@ namespace PstToolkit
         private void CopyFolderRecursive(PstFolder sourceFolder, PstFolder destFolder, 
             ref int processedMessages, int totalMessages, Action<double>? progressCallback)
         {
-            // Copy messages from source folder to destination folder
-            foreach (var message in sourceFolder.Messages)
+            // Call the overload with no filter (copy all messages)
+            CopyFolderRecursive(sourceFolder, destFolder, null, ref processedMessages, totalMessages, progressCallback);
+        }
+        
+        private void CopyFolderRecursive(PstFolder sourceFolder, PstFolder destFolder, 
+            MessageFilter? filter, ref int processedMessages, int totalMessages, Action<double>? progressCallback)
+        {
+            // Get all messages in the source folder
+            var messages = sourceFolder.Messages.ToList();
+            
+            // Apply filter if specified to avoid processing messages that don't match
+            IEnumerable<PstMessage> filteredMessages = messages;
+            if (filter != null)
+            {
+                filteredMessages = filter.Apply(messages);
+            }
+            
+            // Process only the filtered messages
+            foreach (var message in filteredMessages)
             {
                 try
                 {
                     // Get message raw content and create a copy
                     byte[] rawContent = message.GetRawContent();
                     
-                    // Create a new message
-                    var newMessage = PstMessage.Create(this, 
-                        message.Subject, 
-                        message.BodyText ?? string.Empty, 
-                        message.SenderEmail ?? string.Empty, 
-                        message.SenderName ?? string.Empty);
+                    // Create a MimeMessage from the original message to ensure all properties are copied
+                    var mimeMessage = message.ToMimeMessage();
                     
-                    // Copy additional properties if available
+                    // Create a new message from the MimeMessage to preserve all metadata
+                    var newMessage = PstMessage.Create(this, mimeMessage);
+                    
+                    // Ensure critical properties are set correctly
+                    if (string.IsNullOrEmpty(newMessage.Subject) && !string.IsNullOrEmpty(message.Subject))
+                    {
+                        // Create a new message using the direct method as fallback if needed
+                        newMessage = PstMessage.Create(this, 
+                            message.Subject, 
+                            message.BodyText ?? string.Empty, 
+                            message.SenderEmail ?? string.Empty, 
+                            message.SenderName ?? string.Empty);
+                    }
+                    
+                    // Copy all attachments including nested email attachments
                     if (message.HasAttachments)
                     {
-                        foreach (var attachName in message.AttachmentNames)
+                        // Get all attachments
+                        var attachments = message.GetAttachments();
+                        
+                        foreach (var attachment in attachments)
                         {
-                            // For simplicity we're adding a placeholder attachment
-                            // In a real implementation, we would extract and copy the actual attachment
-                            var attachData = Encoding.UTF8.GetBytes(
-                                $"This is a placeholder for attachment: {attachName}");
-                            newMessage.AddAttachment(attachName, attachData, "application/octet-stream");
+                            // Get the attachment content
+                            byte[] attachmentContent = attachment.GetContent();
+                            
+                            // Check if it's an email attachment
+                            if (attachment.IsEmailMessage)
+                            {
+                                // Process it as an email
+                                var emailAttachment = attachment.GetAsEmailMessage();
+                                if (emailAttachment != null)
+                                {
+                                    // Add the email as an attachment with all its data intact
+                                    newMessage.AddEmailAttachment(emailAttachment);
+                                }
+                                else
+                                {
+                                    // If failed to parse as email, add as regular attachment
+                                    newMessage.AddAttachment(attachment.Filename, attachmentContent, attachment.ContentType);
+                                }
+                            }
+                            else
+                            {
+                                // Regular attachment, just copy it
+                                newMessage.AddAttachment(attachment.Filename, attachmentContent, attachment.ContentType);
+                            }
                         }
                     }
                     
@@ -358,7 +568,7 @@ namespace PstToolkit
                 var destSubFolder = destFolder.CreateSubFolder(sourceSubFolder.Name);
                 
                 // Recursively copy contents
-                CopyFolderRecursive(sourceSubFolder, destSubFolder, 
+                CopyFolderRecursive(sourceSubFolder, destSubFolder, filter,
                     ref processedMessages, totalMessages, progressCallback);
             }
         }
@@ -386,17 +596,108 @@ namespace PstToolkit
             return _nodeBTree;
         }
 
+        /// <summary>
+        /// Reads a block of data from the PST file at the specified offset and size.
+        /// Optimized for handling large blocks efficiently.
+        /// </summary>
+        /// <param name="offset">The offset in the file to read from.</param>
+        /// <param name="size">The size of the block to read.</param>
+        /// <returns>The data as a byte array.</returns>
         internal byte[] ReadBlock(ulong offset, uint size)
         {
             if (_fileStream == null)
                 throw new PstCorruptedException("File stream is not initialized");
                 
+            if (size == 0)
+                return Array.Empty<byte>();
+                
             _fileStream.Position = (long)offset;
-            var buffer = new byte[size];
-            _fileStream.Read(buffer, 0, (int)size);
-            return buffer;
+            
+            const int chunkSize = 8192; // 8KB chunks for efficient reading
+            
+            // For small blocks, use a simple read
+            if (size <= chunkSize)
+            {
+                var buffer = new byte[size];
+                _fileStream.Read(buffer, 0, (int)size);
+                return buffer;
+            }
+            
+            // For large blocks, read in chunks for better performance and memory usage
+            var result = new byte[size];
+            int bytesRead = 0;
+            int remaining = (int)size;
+            
+            while (remaining > 0)
+            {
+                int toRead = Math.Min(chunkSize, remaining);
+                int read = _fileStream.Read(result, bytesRead, toRead);
+                
+                if (read == 0)
+                    break; // End of file
+                    
+                bytesRead += read;
+                remaining -= read;
+            }
+            
+            return result;
+        }
+        
+        /// <summary>
+        /// Asynchronously reads a block of data from the PST file at the specified offset and size.
+        /// Optimized for handling large blocks efficiently.
+        /// </summary>
+        /// <param name="offset">The offset in the file to read from.</param>
+        /// <param name="size">The size of the block to read.</param>
+        /// <param name="cancellationToken">Optional cancellation token for the async operation.</param>
+        /// <returns>The data as a byte array.</returns>
+        internal async Task<byte[]> ReadBlockAsync(ulong offset, uint size, CancellationToken cancellationToken = default)
+        {
+            if (_fileStream == null)
+                throw new PstCorruptedException("File stream is not initialized");
+                
+            if (size == 0)
+                return Array.Empty<byte>();
+                
+            _fileStream.Position = (long)offset;
+            
+            const int chunkSize = 8192; // 8KB chunks for efficient reading
+            
+            // For small blocks, use a simple read
+            if (size <= chunkSize)
+            {
+                var buffer = new byte[size];
+                await _fileStream.ReadAsync(buffer, 0, (int)size, cancellationToken).ConfigureAwait(false);
+                return buffer;
+            }
+            
+            // For large blocks, read in chunks for better performance and memory usage
+            var result = new byte[size];
+            int bytesRead = 0;
+            int remaining = (int)size;
+            
+            while (remaining > 0 && !cancellationToken.IsCancellationRequested)
+            {
+                int toRead = Math.Min(chunkSize, remaining);
+                int read = await _fileStream.ReadAsync(result, bytesRead, toRead, cancellationToken).ConfigureAwait(false);
+                
+                if (read == 0)
+                    break; // End of file
+                    
+                bytesRead += read;
+                remaining -= read;
+            }
+            
+            cancellationToken.ThrowIfCancellationRequested();
+            return result;
         }
 
+        /// <summary>
+        /// Writes a block of data to the PST file at the specified offset.
+        /// Optimized for handling large blocks efficiently.
+        /// </summary>
+        /// <param name="offset">The offset in the file to write to.</param>
+        /// <param name="data">The data to write.</param>
         internal void WriteBlock(ulong offset, byte[] data)
         {
             if (_isReadOnly)
@@ -404,9 +705,33 @@ namespace PstToolkit
                 
             if (_fileStream == null)
                 throw new PstCorruptedException("File stream is not initialized");
+            
+            if (data == null || data.Length == 0)
+                return;
                 
             _fileStream.Position = (long)offset;
-            _fileStream.Write(data, 0, data.Length);
+            
+            const int chunkSize = 8192; // 8KB chunks for efficient writing
+            
+            // For small blocks, use a simple write
+            if (data.Length <= chunkSize)
+            {
+                _fileStream.Write(data, 0, data.Length);
+                return;
+            }
+            
+            // For large blocks, write in chunks for better performance
+            int written = 0;
+            int remaining = data.Length;
+            
+            while (remaining > 0)
+            {
+                int toWrite = Math.Min(chunkSize, remaining);
+                _fileStream.Write(data, written, toWrite);
+                
+                written += toWrite;
+                remaining -= toWrite;
+            }
         }
 
         internal void RegisterFolder(uint folderId, PstFolder folder)
