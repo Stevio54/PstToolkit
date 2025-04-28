@@ -1830,9 +1830,6 @@ namespace PstToolkit
                     var tableData = bTree.GetNodeData(recipientTableNode);
                     if (tableData != null)
                     {
-                        // Track whether we found the recipient to be removed
-                        bool recipientFound = false;
-                        
                         // Create a new table data array with the recipient removed
                         using var memStream = new MemoryStream();
                         using var writer = new BinaryWriter(memStream);
@@ -1884,7 +1881,6 @@ namespace PstToolkit
                                     {
                                         // This is the recipient we want to remove
                                         isTargetRecipient = true;
-                                        recipientFound = true;
                                         break;
                                     }
                                 }
