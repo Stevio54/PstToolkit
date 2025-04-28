@@ -14,19 +14,19 @@ namespace PstToolkit.Utils
         public uint NodeId { get; }
 
         /// <summary>
-        /// Gets the data ID.
+        /// Gets or sets the data ID.
         /// </summary>
-        public uint DataId { get; }
+        public uint DataId { get; set; }
 
         /// <summary>
-        /// Gets the parent node ID.
+        /// Gets or sets the parent node ID.
         /// </summary>
-        public uint ParentId { get; }
+        public uint ParentId { get; set; }
 
         /// <summary>
-        /// Gets the node type.
+        /// Gets or sets the node type.
         /// </summary>
-        public ushort NodeType { get; }
+        public ushort NodeType { get; set; }
 
         /// <summary>
         /// Gets or sets the data offset in the file.
@@ -62,6 +62,16 @@ namespace PstToolkit.Utils
         /// Gets or sets the sent date (for messages).
         /// </summary>
         public DateTime? SentDate { get; set; }
+        
+        /// <summary>
+        /// Gets or sets the message size in bytes (for messages).
+        /// </summary>
+        public uint MessageSize { get; set; }
+        
+        /// <summary>
+        /// Gets or sets whether the message has attachments (for messages).
+        /// </summary>
+        public bool HasAttachment { get; set; }
         
         /// <summary>
         /// Gets or sets additional metadata for the node.

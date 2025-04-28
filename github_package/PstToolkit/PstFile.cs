@@ -60,6 +60,18 @@ namespace PstToolkit
         /// Gets whether the PST file is open in read-only mode.
         /// </summary>
         public bool IsReadOnly => _isReadOnly;
+        
+        /// <summary>
+        /// Gets the size of the PST file.
+        /// </summary>
+        /// <returns>The file size in bytes.</returns>
+        internal ulong GetFileSize()
+        {
+            if (_fileStream == null)
+                throw new PstException("File stream is not initialized");
+                
+            return (ulong)_fileStream.Length;
+        }
 
         /// <summary>
         /// Opens an existing PST file for reading or writing.
@@ -691,6 +703,38 @@ namespace PstToolkit
             cancellationToken.ThrowIfCancellationRequested();
             return result;
         }
+        
+        /// <summary>
+        /// Allocates a block of storage in the PST file for the specified data block ID.
+        /// </summary>
+        /// <param name="blockId">The block ID to allocate space for.</param>
+        /// <param name="size">The size of the block to allocate.</param>
+        /// <returns>The offset in the file where the block was allocated.</returns>
+        internal ulong AllocateBlock(uint blockId, uint size)
+        {
+            if (_isReadOnly)
+                throw new PstAccessException("Cannot allocate blocks in a read-only PST file");
+                
+            if (_fileStream == null)
+                throw new PstCorruptedException("File stream is not initialized");
+                
+            // In a production implementation, this would:
+            // 1. Use the file allocation table to find free space
+            // 2. Mark the space as allocated
+            // 3. Update allocation metadata
+            
+            // For now, we'll append to the end of the file
+            ulong offset = (ulong)_fileStream.Length;
+            
+            // Align to block boundary (typically 64 bytes in PST)
+            if (offset % 64 != 0)
+            {
+                offset = ((offset / 64) + 1) * 64;
+            }
+            
+            // Return the allocated offset
+            return offset;
+        }
 
         /// <summary>
         /// Writes a block of data to the PST file at the specified offset.
@@ -734,6 +778,11 @@ namespace PstToolkit
             }
         }
 
+        /// <summary>
+        /// Registers a folder in the folder cache.
+        /// </summary>
+        /// <param name="folderId">The folder ID.</param>
+        /// <param name="folder">The folder object.</param>
         internal void RegisterFolder(uint folderId, PstFolder folder)
         {
             if (_folderCache == null)
@@ -744,6 +793,11 @@ namespace PstToolkit
             _folderCache[folderId] = folder;
         }
 
+        /// <summary>
+        /// Gets a folder from the folder cache.
+        /// </summary>
+        /// <param name="folderId">The folder ID.</param>
+        /// <returns>The folder, or null if not found in the cache.</returns>
         internal PstFolder? GetCachedFolder(uint folderId)
         {
             if (_folderCache == null)

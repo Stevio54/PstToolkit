@@ -156,9 +156,20 @@ namespace PstToolkit
             
             try
             {
-                // Generate a temporary node ID for the message
-                // In a real implementation, this would be allocated by the PST file
-                uint tempNodeId = 0x10000000 | (uint)DateTime.Now.Ticks & 0xFFFFFF;
+                // Generate a proper message node ID using the PST file's node allocation system
+                var bTree = pstFile.GetNodeBTree();
+                
+                // Message node IDs have the NID_TYPE_MESSAGE type identifier
+                uint nodeIdBase = bTree.GetHighestNodeId(PstNodeTypes.NID_TYPE_MESSAGE);
+                uint messageNodeId = nodeIdBase + PstNodeTypes.NID_TYPE_MESSAGE;
+                
+                // Ensure the node ID doesn't already exist
+                while (bTree.GetNodeById(messageNodeId) != null)
+                {
+                    messageNodeId += PstNodeTypes.NID_TYPE_MESSAGE;
+                }
+                
+                Console.WriteLine($"Generated new message ID: {messageNodeId & 0x00FFFFFF:X} for folder {(messageNodeId >> 24) & 0x00FF}");
                 
                 // Create a MimeMessage to help build the email
                 var mimeMessage = new MimeMessage();
@@ -181,8 +192,31 @@ namespace PstToolkit
                     messageData = memStream.ToArray();
                 }
                 
-                // Create a placeholder node entry
-                var nodeEntry = new NdbNodeEntry(tempNodeId, 0, 0, 0, (uint)messageData.Length);
+                // Allocate space for the message data in the PST heap
+                ulong dataOffset = bTree.AllocateSpace(messageData.Length);
+                
+                // Create a real node entry with proper PST structure
+                var nodeEntry = new NdbNodeEntry(
+                    messageNodeId,                  // The allocated node ID
+                    messageNodeId & 0x00FFFFFF,     // The data ID (lower 24 bits of node ID)
+                    0,                              // Parent ID will be set when added to a folder
+                    dataOffset,                     // The allocated data offset
+                    (uint)messageData.Length        // The size of the message data
+                );
+                
+                // Set properties in the node entry (for folder display)
+                nodeEntry.DisplayName = subject;
+                nodeEntry.Subject = subject;
+                nodeEntry.SenderName = senderName;
+                nodeEntry.SenderEmail = senderEmail;
+                nodeEntry.SentDate = DateTime.Now;
+                nodeEntry.NodeType = PstNodeTypes.NID_TYPE_MESSAGE;
+                
+                // Add the node to the B-tree
+                bTree.AddNode(nodeEntry);
+                
+                // Write the message data to the allocated space
+                bTree.WriteDataToOffset(dataOffset, messageData);
                 
                 // Create a new message with the node entry
                 var message = new PstMessage(pstFile, nodeEntry);
@@ -219,9 +253,20 @@ namespace PstToolkit
             
             try
             {
-                // Generate a temporary node ID for the message
-                // In a real implementation, this would be allocated by the PST file
-                uint tempNodeId = 0x10000000 | (uint)DateTime.Now.Ticks & 0xFFFFFF;
+                // Generate a proper message node ID using the PST file's node allocation system
+                var bTree = pstFile.GetNodeBTree();
+                
+                // Message node IDs have the NID_TYPE_MESSAGE type identifier
+                uint nodeIdBase = bTree.GetHighestNodeId(PstNodeTypes.NID_TYPE_MESSAGE);
+                uint messageNodeId = nodeIdBase + PstNodeTypes.NID_TYPE_MESSAGE;
+                
+                // Ensure the node ID doesn't already exist
+                while (bTree.GetNodeById(messageNodeId) != null)
+                {
+                    messageNodeId += PstNodeTypes.NID_TYPE_MESSAGE;
+                }
+                
+                Console.WriteLine($"Generated new message ID: {messageNodeId & 0x00FFFFFF:X} for folder {(messageNodeId >> 24) & 0x00FF}");
                 
                 // Serialize the MimeMessage to a byte array
                 byte[] messageData;
@@ -231,8 +276,20 @@ namespace PstToolkit
                     messageData = memStream.ToArray();
                 }
                 
-                // Create a placeholder node entry
-                var nodeEntry = new NdbNodeEntry(tempNodeId, 0, 0, 0, (uint)messageData.Length);
+                // Allocate space for the message data in the PST heap
+                ulong dataOffset = bTree.AllocateSpace(messageData.Length);
+                
+                // Create a real node entry with proper PST structure
+                var nodeEntry = new NdbNodeEntry(
+                    messageNodeId,                  // The allocated node ID
+                    messageNodeId & 0x00FFFFFF,     // The data ID (lower 24 bits of node ID)
+                    0,                              // Parent ID will be set when added to a folder
+                    dataOffset,                     // The allocated data offset
+                    (uint)messageData.Length        // The size of the message data
+                );
+                
+                // Write the message data to the allocated space
+                bTree.WriteDataToOffset(dataOffset, messageData);
                 
                 // Create a new message with the node entry
                 var message = new PstMessage(pstFile, nodeEntry);
@@ -387,14 +444,32 @@ namespace PstToolkit
             
             try
             {
-                // Generate a temporary node ID for the message
-                // In a real implementation, this would be allocated by the PST file
-                uint newMessageId = 0x10000000 | (uint)DateTime.Now.Ticks & 0xFFFFFF;
-                
-                // Create a node for the message
+                // Generate a proper message node ID using the PST file's node allocation system
                 var bTree = pstFile.GetNodeBTree();
-                var nodeData = sourceMessage.GetRawContent(); // Get raw content to preserve all properties
-                var nodeEntry = bTree.AddNode(newMessageId, 0, 0, nodeData, sourceMessage.Subject);
+                
+                // Message node IDs have the NID_TYPE_MESSAGE type identifier
+                uint nodeIdBase = bTree.GetHighestNodeId(PstNodeTypes.NID_TYPE_MESSAGE);
+                uint newMessageId = nodeIdBase + PstNodeTypes.NID_TYPE_MESSAGE;
+                
+                // Ensure the node ID doesn't already exist
+                while (bTree.GetNodeById(newMessageId) != null)
+                {
+                    newMessageId += PstNodeTypes.NID_TYPE_MESSAGE;
+                }
+                
+                Console.WriteLine($"Generated new message ID: {newMessageId & 0x00FFFFFF:X} for folder {(newMessageId >> 24) & 0x00FF}");
+                
+                // Get the source message's raw content to preserve all properties
+                var nodeData = sourceMessage.GetRawContent();
+                
+                // Create a node for the message with proper parameters
+                var nodeEntry = bTree.AddNode(
+                    newMessageId,                     // Node ID
+                    newMessageId & 0x00FFFFFF,        // Data ID
+                    0,                                // Parent ID (will be set when added to folder)
+                    nodeData,                         // Content data
+                    sourceMessage.Subject             // Display name
+                );
                 
                 // Create the message object
                 var message = new PstMessage(pstFile, nodeEntry);
@@ -506,13 +581,19 @@ namespace PstToolkit
                     var mimeMessage = MimeMessage.Load(stream);
                     
                     // Create a new PstMessage from the MimeMessage
+                    var bTree = _parentMessage._pstFile.GetNodeBTree();
+                    
+                    // Use attachment node type for embedded email (not a real message node in the PST)
+                    uint nodeIdBase = bTree.GetHighestNodeId(PstNodeTypes.NID_TYPE_ATTACHMENT);
+                    uint embeddedNodeId = nodeIdBase + PstNodeTypes.NID_TYPE_ATTACHMENT;
+                    
+                    // Create a node entry for this attachment - not actually in the PST tree
                     var nodeEntry = new NdbNodeEntry(
-                        // Generate a temporary ID for this email attachment
-                        (uint)(0x20000000 | (uint)DateTime.Now.Ticks & 0xFFFFFF),
-                        0,  // No parent - this is not in the PST structure
-                        0,  // Block ID - not applicable here
-                        0,  // Data offset - not applicable here
-                        (uint)content.Length
+                        embeddedNodeId,                  // The attachment node ID
+                        embeddedNodeId & 0x00FFFFFF,     // The data ID (lower 24 bits of node ID)
+                        _parentMessage._nodeEntry.NodeId,// Parent ID is the message containing this attachment
+                        0,                               // Data offset - memory only, not in PST
+                        (uint)content.Length             // Size of content
                     );
                     
                     var message = new PstMessage(_parentMessage._pstFile, nodeEntry);
