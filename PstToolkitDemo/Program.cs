@@ -357,6 +357,7 @@ namespace PstToolkitDemo
                     var conditions = filterSpec.Split(new[] { " AND " }, StringSplitOptions.None);
                     var filter = new MessageFilter().SetLogic(FilterLogic.All);
                     
+                    // Add each condition directly to the filter
                     foreach (var condition in conditions)
                     {
                         var subFilter = ParseSingleFilterCondition(condition);
@@ -366,11 +367,36 @@ namespace PstToolkitDemo
                             return null;
                         }
                         
-                        // Apply each condition from the subfilter to the main filter
-                        // Since we can't directly combine filters, we need to replicate the conditions
-                        foreach (var prop in GetFilterProperties(subFilter))
+                        // Add the single filter condition directly
+                        var parts = condition.Split(':');
+                        if (parts.Length < 2)
                         {
-                            filter.AddCondition(prop.Property, prop.Operator, prop.Value);
+                            Console.WriteLine($"Error: Filter must be in format 'property:operator:value': {condition}");
+                            return null;
+                        }
+                        
+                        string property = parts[0].ToLowerInvariant();
+                        string op = parts.Length > 1 ? parts[1].ToLowerInvariant() : "contains";
+                        string value = parts.Length > 2 ? string.Join(":", parts.Skip(2)) : "";
+                        
+                        // Map the operator string to FilterOperator enum
+                        FilterOperator filterOp = GetOperator(op);
+                        
+                        // Special handling for dates
+                        if (property == "date" || property == "sentdate" || property == "receiveddate")
+                        {
+                            if (DateTime.TryParse(value, out DateTime dateValue))
+                            {
+                                filter.AddCondition(property, filterOp, dateValue);
+                            }
+                            else
+                            {
+                                filter.AddCondition(property, filterOp, value);
+                            }
+                        }
+                        else
+                        {
+                            filter.AddCondition(property, filterOp, value);
                         }
                     }
                     
@@ -382,6 +408,7 @@ namespace PstToolkitDemo
                     var conditions = filterSpec.Split(new[] { " OR " }, StringSplitOptions.None);
                     var filter = new MessageFilter().SetLogic(FilterLogic.Any);
                     
+                    // Add each condition directly to the filter
                     foreach (var condition in conditions)
                     {
                         var subFilter = ParseSingleFilterCondition(condition);
@@ -391,10 +418,36 @@ namespace PstToolkitDemo
                             return null;
                         }
                         
-                        // Apply each condition from the subfilter to the main filter
-                        foreach (var prop in GetFilterProperties(subFilter))
+                        // Add the single filter condition directly
+                        var parts = condition.Split(':');
+                        if (parts.Length < 2)
                         {
-                            filter.AddCondition(prop.Property, prop.Operator, prop.Value);
+                            Console.WriteLine($"Error: Filter must be in format 'property:operator:value': {condition}");
+                            return null;
+                        }
+                        
+                        string property = parts[0].ToLowerInvariant();
+                        string op = parts.Length > 1 ? parts[1].ToLowerInvariant() : "contains";
+                        string value = parts.Length > 2 ? string.Join(":", parts.Skip(2)) : "";
+                        
+                        // Map the operator string to FilterOperator enum
+                        FilterOperator filterOp = GetOperator(op);
+                        
+                        // Special handling for dates
+                        if (property == "date" || property == "sentdate" || property == "receiveddate")
+                        {
+                            if (DateTime.TryParse(value, out DateTime dateValue))
+                            {
+                                filter.AddCondition(property, filterOp, dateValue);
+                            }
+                            else
+                            {
+                                filter.AddCondition(property, filterOp, value);
+                            }
+                        }
+                        else
+                        {
+                            filter.AddCondition(property, filterOp, value);
                         }
                     }
                     
@@ -413,12 +466,38 @@ namespace PstToolkitDemo
             }
         }
         
-        // For the demo, let's use a simpler approach to actually handle the composite
-        // filters better without needing direct access to filter internals
-        static void UseDirectCompositeFilters()
+        // Helper method to get FilterOperator from string
+        private static FilterOperator GetOperator(string op)
         {
-            // This would be replaced with direct filtering in a real implementation
-            // For now we're using a simplified handling
+            switch (op.ToLowerInvariant())
+            {
+                case "contains":
+                    return FilterOperator.Contains;
+                case "equals":
+                case "is":
+                    return FilterOperator.Equals;
+                case "startswith":
+                case "starts":
+                    return FilterOperator.StartsWith;
+                case "endswith":
+                case "ends":
+                    return FilterOperator.EndsWith;
+                case "after":
+                case "greaterthan":
+                case "newer":
+                    return FilterOperator.GreaterThan;
+                case "before":
+                case "lessthan":
+                case "older":
+                    return FilterOperator.LessThan;
+                case "between":
+                    return FilterOperator.Between;
+                case "regex":
+                case "matches":
+                    return FilterOperator.RegexMatch;
+                default:
+                    return FilterOperator.Contains; // Default
+            }
         }
         
         static MessageFilter? ParseSingleFilterCondition(string filterSpec)
