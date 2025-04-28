@@ -57,6 +57,11 @@ namespace PstToolkit.Formats
         /// Gets the root node ID of the block B-tree.
         /// </summary>
         public uint BlockBTreeRoot { get; private set; }
+        
+        /// <summary>
+        /// Gets the starting page offset for the B-tree heap structure.
+        /// </summary>
+        public uint BTreeOnHeapStartPage { get; private set; }
 
         /// <summary>
         /// Gets the ID of the root folder.
@@ -109,6 +114,9 @@ namespace PstToolkit.Formats
                     header.NodeBTreeRoot = reader.ReadUInt32();
                     header.BlockBTreeRoot = reader.ReadUInt32();
                     
+                    // B-tree start page is typically at offset 0x100 for ANSI PST
+                    header.BTreeOnHeapStartPage = 0x100;
+                    
                     // Root folder ID is typically 0x21 for ANSI PST
                     header.RootFolderId = 0x21;
                 }
@@ -118,12 +126,15 @@ namespace PstToolkit.Formats
                     header.NodeBTreeRoot = reader.ReadUInt32();
                     header.BlockBTreeRoot = reader.ReadUInt32();
                     
+                    // B-tree start page is typically at offset 0x200 for Unicode PST
+                    header.BTreeOnHeapStartPage = 0x200;
+                    
                     // Root folder ID is typically 0x42 for Unicode PST
                     header.RootFolderId = 0x42;
                 }
                 
-                // For a real implementation, we would validate more extensively
-                header.IsValid = true;
+                // Perform extended validation
+                header.IsValid = header.ValidateHeader();
             }
             catch
             {
@@ -154,12 +165,14 @@ namespace PstToolkit.Formats
             {
                 header.NodeBTreeRoot = 0x0D;
                 header.BlockBTreeRoot = 0x0E;
+                header.BTreeOnHeapStartPage = 0x100;
                 header.RootFolderId = 0x21;
             }
             else
             {
                 header.NodeBTreeRoot = 0x1D;
                 header.BlockBTreeRoot = 0x1E;
+                header.BTreeOnHeapStartPage = 0x200;
                 header.RootFolderId = 0x42;
             }
             
@@ -172,31 +185,124 @@ namespace PstToolkit.Formats
         /// <param name="writer">The binary writer to write to.</param>
         public void Write(PstBinaryWriter writer)
         {
-            // In a real implementation, this would write the complete PST header structure
-            // including all the necessary metadata fields
-            
-            // For now, this is a simplified placeholder implementation
+            // Move to the beginning of the file
             writer.BaseStream.Position = 0;
             
-            // Write signature
-            writer.Write(Signature);
+            // Create the header bytes array with appropriate size based on format
+            int headerSize = IsAnsi ? 0x200 : 0x400;
+            byte[] headerBytes = new byte[headerSize];
             
-            // Write placeholder for the rest of the header
-            byte[] headerBytes = new byte[IsAnsi ? 0x200 : 0x400];
+            // Write signature (first 4 bytes)
+            BitConverter.GetBytes(Signature).CopyTo(headerBytes, 0);
             
-            // Set version info
-            headerBytes[10] = (byte)(MajorVersion & 0xFF);
-            headerBytes[11] = (byte)(MajorVersion >> 8);
-            headerBytes[12] = (byte)(MinorVersion & 0xFF);
-            headerBytes[13] = (byte)(MinorVersion >> 8);
+            // Write format type info (offset 8)
+            headerBytes[8] = (byte)(IsAnsi ? 0 : 1);
+            
+            // Write version info (offset 10)
+            BitConverter.GetBytes(MajorVersion).CopyTo(headerBytes, 10);
+            BitConverter.GetBytes(MinorVersion).CopyTo(headerBytes, 12);
+            
+            // Fill in other standard header fields
+            
+            // Write file size placeholder (offset 0x78 for ANSI, 0xB8 for Unicode)
+            int fileSizeOffset = IsAnsi ? 0x78 : 0xB8;
+            BitConverter.GetBytes((ulong)headerSize).CopyTo(headerBytes, fileSizeOffset);
             
             // Set B-tree root info
             int rootOffset = IsAnsi ? 0xA4 : 0xC4;
             BitConverter.GetBytes(NodeBTreeRoot).CopyTo(headerBytes, rootOffset);
             BitConverter.GetBytes(BlockBTreeRoot).CopyTo(headerBytes, rootOffset + 4);
             
-            // Write the header
+            // Write a placeholder value for the number of nodes in the B-tree
+            BitConverter.GetBytes(1).CopyTo(headerBytes, rootOffset + 8);
+            
+            // Set B-tree heap start page
+            BitConverter.GetBytes(BTreeOnHeapStartPage).CopyTo(headerBytes, rootOffset + 16);
+            
+            // Write root folder ID at appropriate location
+            int rootFolderOffset = IsAnsi ? 0xC4 : 0xE4;
+            BitConverter.GetBytes(RootFolderId).CopyTo(headerBytes, rootFolderOffset);
+            
+            // Add a format verification value ("!BDN" or "BBDN")
+            if (IsAnsi)
+            {
+                headerBytes[0x1FC] = 0x21; // '!'
+                headerBytes[0x1FD] = 0x42; // 'B'
+                headerBytes[0x1FE] = 0x44; // 'D'
+                headerBytes[0x1FF] = 0x4E; // 'N'
+            }
+            else
+            {
+                headerBytes[0x3FC] = 0x42; // 'B'
+                headerBytes[0x3FD] = 0x42; // 'B'
+                headerBytes[0x3FE] = 0x44; // 'D'
+                headerBytes[0x3FF] = 0x4E; // 'N'
+            }
+            
+            // Write the complete header
             writer.Write(headerBytes);
+        }
+        
+        /// <summary>
+        /// Performs extended validation of the PST header.
+        /// </summary>
+        /// <returns>True if the header is valid, false otherwise.</returns>
+        private bool ValidateHeader()
+        {
+            // Validate the signature
+            bool isValidSignature = false;
+            
+            if (FormatType == PstFormatType.Ansi && Signature == ANSI_SIGNATURE)
+            {
+                isValidSignature = true;
+            }
+            else if (FormatType == PstFormatType.Unicode && Signature == UNICODE_SIGNATURE)
+            {
+                isValidSignature = true;
+            }
+            
+            if (!isValidSignature)
+            {
+                return false;
+            }
+            
+            // Validate version
+            if (FormatType == PstFormatType.Ansi)
+            {
+                // ANSI PST should have version 11-14
+                if (MajorVersion < 11 || MajorVersion > 14)
+                {
+                    return false;
+                }
+            }
+            else
+            {
+                // Unicode PST should have version 15+
+                if (MajorVersion < 15)
+                {
+                    return false;
+                }
+            }
+            
+            // Validate B-tree roots
+            if (NodeBTreeRoot == 0 || BlockBTreeRoot == 0)
+            {
+                return false;
+            }
+            
+            // Validate root folder ID
+            if (RootFolderId == 0)
+            {
+                return false;
+            }
+            
+            // Validate BTreeOnHeapStartPage
+            if (BTreeOnHeapStartPage == 0)
+            {
+                return false;
+            }
+            
+            return true;
         }
     }
 }

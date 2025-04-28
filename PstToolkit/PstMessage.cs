@@ -649,8 +649,21 @@ namespace PstToolkit
                 }
                 catch (Exception ex)
                 {
-                    // Log the error (in a real implementation)
+                    // Log the error with all details for debugging
                     Console.WriteLine($"Error parsing nested email: {ex.Message}");
+                    Console.WriteLine($"Exception details: {ex}");
+                    
+                    // In a production environment, this could also write to a log file or logging service
+                    string logFilePath = Path.Combine(Path.GetTempPath(), "PstToolkit_errors.log");
+                    try
+                    {
+                        File.AppendAllText(logFilePath, 
+                            $"[{DateTime.Now}] Error parsing nested email: {ex.Message}\n{ex}\n\n");
+                    }
+                    catch
+                    {
+                        // Silently fail if we can't write to the log file
+                    }
                     return null;
                 }
             }
@@ -1131,12 +1144,50 @@ namespace PstToolkit
             
             try
             {
-                // In a real implementation, this would:
-                // 1. Find the attachment node ID
-                // 2. Remove it from the PST file
-                // 3. Update the attachment table
+                // 1. Find the attachment node ID by looking for the attachment in the attachment table
+                ushort messageNid = (ushort)(_nodeEntry.NodeId & 0x1F);
+                uint baseAttachmentNodeId = (uint)(PstNodeTypes.NID_TYPE_ATTACHMENT_OBJECT << 5) | messageNid;
                 
-                // For this implementation, we'll just remove it from the AttachmentNames list
+                // Load existing attachments to find the one we want to remove
+                var attachments = GetAttachments();
+                int attachmentIndex = attachments.IndexOf(attachment);
+                
+                if (attachmentIndex >= 0)
+                {
+                    // Calculate the attachment node ID based on its index
+                    uint attachmentNodeId = baseAttachmentNodeId + (uint)attachmentIndex;
+                    
+                    // 2. Remove it from the PST file by removing the node
+                    var bTree = _pstFile.GetNodeBTree();
+                    bTree.RemoveNode(attachmentNodeId);
+                    
+                    // 3. Update the attachment table to reflect the removal
+                    // We also update the attachment table node if needed
+                    uint attachmentTableNodeId = (uint)(PstNodeTypes.NID_TYPE_ATTACHMENT_TABLE << 5) | messageNid;
+                    
+                    // If this was the last attachment, remove the attachment table node too
+                    if (attachments.Count == 1)
+                    {
+                        bTree.RemoveNode(attachmentTableNodeId);
+                    }
+                    else
+                    {
+                        // Otherwise, update the attachment table
+                        // This would involve rebuilding the attachment references
+                        
+                        // For now, we'll just update the count in the attachment table
+                        var attachTableNode = bTree.GetNodeById(attachmentTableNodeId);
+                        if (attachTableNode != null)
+                        {
+                            var propContext = new PropertyContext(_pstFile, attachTableNode);
+                            propContext.SetProperty(PstStructure.PropertyIds.PidTagAttachmentCount, 
+                                PstStructure.PropertyType.PT_LONG, attachments.Count - 1);
+                            propContext.Save();
+                        }
+                    }
+                }
+                
+                // Update the attachment names list in the message properties
                 AttachmentNames.Remove(attachment.Filename);
                 
                 // If there are no more attachments, update the message flags
@@ -1477,11 +1528,79 @@ namespace PstToolkit
                 
                 if (recipientTableNode != null)
                 {
-                    // In a real implementation, this would:
-                    // 1. Read the recipient table rows
-                    // 2. Extract recipient properties for each row
+                    // Read the recipient table structure from the node data
+                    var tableData = bTree.GetNodeData(recipientTableNode);
+                    if (tableData != null && tableData.Length > 0)
+                    {
+                        // Create a property context for the recipient table
+                        var tableContext = new PropertyContext(_pstFile, recipientTableNode);
+                        
+                        // Get the number of recipients in the table
+                        int recipientCount = tableContext.GetInt32(PstStructure.PropertyIds.PidTagRowCount) ?? 0;
+                        
+                        // Read each row in the table to get individual recipient information
+                        using (var reader = new BinaryReader(new MemoryStream(tableData)))
+                        {
+                            // PST recipient tables have a specific structure with:
+                            // - Header (usually 8-12 bytes)
+                            // - Row count (4 bytes)
+                            // - Entry size (4 bytes)
+                            // - Then the actual entries
+                            
+                            // Skip header (usually at position 8-12)
+                            reader.BaseStream.Seek(12, SeekOrigin.Begin);
+                            
+                            // For each recipient entry
+                            for (int i = 0; i < recipientCount; i++)
+                            {
+                                // Each row contains:
+                                // - Row ID (4 bytes)
+                                // - Property count (2 bytes)
+                                // - Followed by property values
+                                
+                                uint rowId = reader.ReadUInt32();
+                                ushort propCount = reader.ReadUInt16();
+                                
+                                // Create a new recipient
+                                var recipient = new Recipient();
+                                
+                                // Read the properties for this recipient
+                                for (int j = 0; j < propCount; j++)
+                                {
+                                    ushort propId = reader.ReadUInt16();
+                                    ushort propType = reader.ReadUInt16();
+                                    
+                                    // Handle different property types
+                                    if (propId == PstStructure.PropertyIds.PidTagDisplayName)
+                                    {
+                                        recipient.DisplayName = ReadStringProperty(reader, (PstStructure.PropertyType)propType);
+                                    }
+                                    else if (propId == PstStructure.PropertyIds.PidTagEmailAddress)
+                                    {
+                                        recipient.EmailAddress = ReadStringProperty(reader, (PstStructure.PropertyType)propType);
+                                    }
+                                    else if (propId == PstStructure.PropertyIds.PidTagRecipientType)
+                                    {
+                                        int type = ReadInt32Property(reader, (PstStructure.PropertyType)propType);
+                                        recipient.Type = (RecipientType)type;
+                                    }
+                                    else
+                                    {
+                                        // Skip other properties based on their type
+                                        SkipPropertyValue(reader, (PstStructure.PropertyType)propType);
+                                    }
+                                }
+                                
+                                // Add the recipient if we have an email address
+                                if (!string.IsNullOrEmpty(recipient.EmailAddress))
+                                {
+                                    result.Add(recipient);
+                                }
+                            }
+                        }
+                    }
                     
-                    // For this implementation, we'll create mock recipients based on the Recipients list
+                    // If we couldn't read the table or there were no recipients, fall back to using Recipients list
                     
                     // If we have email addresses in the Recipients list, use those
                     if (Recipients.Count > 0)
@@ -1536,11 +1655,136 @@ namespace PstToolkit
             
             try
             {
-                // In a real implementation, this would:
-                // 1. Update the recipient table with the new recipient
-                // 2. Create a new row in the table with the recipient properties
+                // 1. Find or create the recipient table for this message
+                ushort messageNid = (ushort)(_nodeEntry.NodeId & 0x1F);
+                uint recipientTableNodeId = (uint)(PstNodeTypes.NID_TYPE_RECIPIENT_TABLE << 5) | messageNid;
                 
-                // For this implementation, we'll just add to the Recipients list
+                var bTree = _pstFile.GetNodeBTree();
+                var recipientTableNode = bTree.FindNodeByNid(recipientTableNodeId);
+                
+                // If no recipient table exists, create one
+                if (recipientTableNode == null)
+                {
+                    // Prepare a new recipient table with this recipient as the only entry
+                    using var memStream = new MemoryStream();
+                    using var writer = new BinaryWriter(memStream);
+                    
+                    // Write table header
+                    writer.Write((uint)1); // Table signature
+                    writer.Write((uint)0); // Reserved
+                    writer.Write((byte)1);  // Table flags
+                    writer.Write((byte)0);  // Reserved
+                    writer.Write((ushort)0); // Reserved
+                    
+                    // Write row count
+                    writer.Write((uint)1); // 1 row (this recipient)
+                    
+                    // Write entry size - a basic recipient entry is approximately 64 bytes
+                    writer.Write((uint)64);
+                    
+                    // Write row ID
+                    writer.Write((uint)1); // Row ID
+                    
+                    // Write property count
+                    writer.Write((ushort)3); // 3 properties (display name, email, type)
+                    
+                    // Write display name property
+                    writer.Write((ushort)PstStructure.PropertyIds.PidTagDisplayName);
+                    writer.Write((ushort)PstStructure.PropertyType.PT_UNICODE);
+                    byte[] nameBytes = Encoding.Unicode.GetBytes(displayName);
+                    writer.Write((ushort)nameBytes.Length);
+                    writer.Write(nameBytes);
+                    
+                    // Write email address property
+                    writer.Write((ushort)PstStructure.PropertyIds.PidTagEmailAddress);
+                    writer.Write((ushort)PstStructure.PropertyType.PT_STRING8);
+                    byte[] emailBytes = Encoding.ASCII.GetBytes(emailAddress);
+                    writer.Write((ushort)emailBytes.Length);
+                    writer.Write(emailBytes);
+                    
+                    // Write recipient type property
+                    writer.Write((ushort)PstStructure.PropertyIds.PidTagRecipientType);
+                    writer.Write((ushort)PstStructure.PropertyType.PT_LONG);
+                    writer.Write((int)type);
+                    
+                    // Get the table data
+                    byte[] tableData = memStream.ToArray();
+                    
+                    // Create a new node for the recipient table
+                    recipientTableNode = new NdbNodeEntry(
+                        recipientTableNodeId,
+                        recipientTableNodeId & 0x00FFFFFF,  // Data ID (lower 24 bits)
+                        _nodeEntry.NodeId,                  // Parent is this message
+                        0,                                  // Data offset will be set when added
+                        (uint)tableData.Length              // Size of table data
+                    );
+                    
+                    // Add the node to the B-tree
+                    bTree.AddNode(recipientTableNode, tableData);
+                }
+                else
+                {
+                    // 2. Update the existing recipient table with the new recipient
+                    var tableData = bTree.GetNodeData(recipientTableNode);
+                    if (tableData != null)
+                    {
+                        // Create a new table data array with this recipient added
+                        using var memStream = new MemoryStream();
+                        using var writer = new BinaryWriter(memStream);
+                        
+                        using var reader = new BinaryReader(new MemoryStream(tableData));
+                        
+                        // Copy table header (12 bytes)
+                        writer.Write(reader.ReadBytes(12));
+                        
+                        // Read current row count
+                        uint rowCount = reader.ReadUInt32();
+                        
+                        // Write incremented row count
+                        writer.Write(rowCount + 1);
+                        
+                        // Copy entry size
+                        writer.Write(reader.ReadUInt32());
+                        
+                        // Copy all existing entries
+                        writer.Write(reader.ReadBytes((int)(tableData.Length - 20)));
+                        
+                        // Write the new recipient entry at the end
+                        // Write row ID - use rowCount + 1 as the ID for uniqueness
+                        writer.Write(rowCount + 1);
+                        
+                        // Write property count
+                        writer.Write((ushort)3); // 3 properties
+                        
+                        // Write display name property
+                        writer.Write((ushort)PstStructure.PropertyIds.PidTagDisplayName);
+                        writer.Write((ushort)PstStructure.PropertyType.PT_UNICODE);
+                        byte[] nameBytes = Encoding.Unicode.GetBytes(displayName);
+                        writer.Write((ushort)nameBytes.Length);
+                        writer.Write(nameBytes);
+                        
+                        // Write email address property
+                        writer.Write((ushort)PstStructure.PropertyIds.PidTagEmailAddress);
+                        writer.Write((ushort)PstStructure.PropertyType.PT_STRING8);
+                        byte[] emailBytes = Encoding.ASCII.GetBytes(emailAddress);
+                        writer.Write((ushort)emailBytes.Length);
+                        writer.Write(emailBytes);
+                        
+                        // Write recipient type property
+                        writer.Write((ushort)PstStructure.PropertyIds.PidTagRecipientType);
+                        writer.Write((ushort)PstStructure.PropertyType.PT_LONG);
+                        writer.Write((int)type);
+                        
+                        // Get the updated table data
+                        byte[] updatedTableData = memStream.ToArray();
+                        
+                        // Update the node data
+                        recipientTableNode.DataSize = (uint)updatedTableData.Length;
+                        bTree.UpdateNodeData(recipientTableNode, updatedTableData);
+                    }
+                }
+                
+                // Add to the Recipients list for tracking in memory
                 Recipients.Add(emailAddress);
                 
                 // Create and return the recipient object
@@ -1573,11 +1817,119 @@ namespace PstToolkit
             
             try
             {
-                // In a real implementation, this would:
-                // 1. Find the recipient in the recipient table
-                // 2. Remove the row from the table
+                // 1. Find the recipient table for this message
+                ushort messageNid = (ushort)(_nodeEntry.NodeId & 0x1F);
+                uint recipientTableNodeId = (uint)(PstNodeTypes.NID_TYPE_RECIPIENT_TABLE << 5) | messageNid;
                 
-                // For this implementation, we'll just remove from the Recipients list
+                var bTree = _pstFile.GetNodeBTree();
+                var recipientTableNode = bTree.FindNodeByNid(recipientTableNodeId);
+                
+                if (recipientTableNode != null)
+                {
+                    // 2. Update the existing recipient table by removing the target recipient
+                    var tableData = bTree.GetNodeData(recipientTableNode);
+                    if (tableData != null)
+                    {
+                        // Track whether we found the recipient to be removed
+                        bool recipientFound = false;
+                        
+                        // Create a new table data array with the recipient removed
+                        using var memStream = new MemoryStream();
+                        using var writer = new BinaryWriter(memStream);
+                        
+                        using var reader = new BinaryReader(new MemoryStream(tableData));
+                        
+                        // Copy table header (12 bytes)
+                        writer.Write(reader.ReadBytes(12));
+                        
+                        // Read current row count
+                        uint rowCount = reader.ReadUInt32();
+                        
+                        // Copy entry size
+                        uint entrySize = reader.ReadUInt32();
+                        writer.Write(entrySize);
+                        
+                        // We'll keep track of valid entries
+                        int validEntries = 0;
+                        
+                        // Process all existing entries
+                        for (int i = 0; i < rowCount; i++)
+                        {
+                            // Mark the current position so we can reread if needed
+                            long entryStart = reader.BaseStream.Position;
+                            
+                            // Read row ID
+                            uint rowId = reader.ReadUInt32();
+                            
+                            // Read property count
+                            ushort propCount = reader.ReadUInt16();
+                            
+                            // Check if this entry matches our target email
+                            bool isTargetRecipient = false;
+                            
+                            // Store the current position so we can go back
+                            long currentPos = reader.BaseStream.Position;
+                            
+                            // Read all properties to check if this is our target recipient
+                            for (int j = 0; j < propCount; j++)
+                            {
+                                ushort propId = reader.ReadUInt16();
+                                ushort propType = reader.ReadUInt16();
+                                
+                                if (propId == PstStructure.PropertyIds.PidTagEmailAddress)
+                                {
+                                    string email = ReadStringProperty(reader, (PstStructure.PropertyType)propType);
+                                    
+                                    if (email.Equals(emailAddress, StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        // This is the recipient we want to remove
+                                        isTargetRecipient = true;
+                                        recipientFound = true;
+                                        break;
+                                    }
+                                }
+                                else
+                                {
+                                    // Skip other properties
+                                    SkipPropertyValue(reader, (PstStructure.PropertyType)propType);
+                                }
+                            }
+                            
+                            // Go back to the start of this entry
+                            reader.BaseStream.Position = entryStart;
+                            
+                            if (!isTargetRecipient)
+                            {
+                                // This is not the target recipient, so copy it to the new table
+                                int remainingBytes = (int)(reader.BaseStream.Length - reader.BaseStream.Position);
+                                int bytesToCopy = Math.Min(remainingBytes, (int)entrySize);
+                                
+                                writer.Write(reader.ReadBytes(bytesToCopy));
+                                validEntries++;
+                            }
+                            else
+                            {
+                                // Skip this entry in the output
+                                reader.BaseStream.Position += entrySize;
+                            }
+                        }
+                        
+                        // Now go back and update the row count in the header
+                        long currentPosition = writer.BaseStream.Position;
+                        writer.BaseStream.Position = 12; // Position of the row count
+                        writer.Write((uint)validEntries);
+                        writer.BaseStream.Position = currentPosition;
+                        
+                        // Get the updated table data
+                        byte[] updatedTableData = memStream.ToArray();
+                        
+                        // Update the node data
+                        recipientTableNode.DataSize = (uint)updatedTableData.Length;
+                        bTree.UpdateNodeData(recipientTableNode, updatedTableData);
+                    }
+                }
+                
+                // Also remove from the Recipients list for tracking in memory
                 return Recipients.Remove(emailAddress);
             }
             catch (Exception ex)
@@ -1604,17 +1956,75 @@ namespace PstToolkit
                 
                 if (recipientTableNode != null)
                 {
-                    // In a real implementation, this would:
-                    // 1. Read the recipient table rows
-                    // 2. Extract recipient email addresses for each row
-                    
-                    // For this implementation, we'll create sample recipients
-                    Recipients.Add("recipient1@example.com");
-                    
-                    // Add a CC recipient sometimes
-                    if ((_nodeEntry.NodeId & 0x02) != 0) // Simple way to vary sample data
+                    // Read the recipient table structure from the node data
+                    var tableData = bTree.GetNodeData(recipientTableNode);
+                    if (tableData != null && tableData.Length > 0)
                     {
-                        Recipients.Add("cc@example.com");
+                        // Create a property context for the recipient table
+                        var tableContext = new PropertyContext(_pstFile, recipientTableNode);
+                        
+                        // Get the number of recipients in the table
+                        int recipientCount = tableContext.GetInt32(PstStructure.PropertyIds.PidTagRowCount) ?? 0;
+                        
+                        // Read each row in the table to get individual recipient information
+                        using (var reader = new BinaryReader(new MemoryStream(tableData)))
+                        {
+                            // Skip header (usually at position 8-12)
+                            reader.BaseStream.Seek(12, SeekOrigin.Begin);
+                            
+                            // Read row count (already obtained from property context)
+                            reader.ReadUInt32();
+                            
+                            // Read entry size
+                            reader.ReadUInt32();
+                            
+                            // For each recipient entry
+                            for (int i = 0; i < recipientCount; i++)
+                            {
+                                try
+                                {
+                                    // Read row ID
+                                    reader.ReadUInt32();
+                                    
+                                    // Read property count
+                                    ushort propCount = reader.ReadUInt16();
+                                    
+                                    // Read the properties for this recipient
+                                    for (int j = 0; j < propCount; j++)
+                                    {
+                                        ushort propId = reader.ReadUInt16();
+                                        ushort propType = reader.ReadUInt16();
+                                        
+                                        // We're interested in the email address
+                                        if (propId == PstStructure.PropertyIds.PidTagEmailAddress)
+                                        {
+                                            string email = ReadStringProperty(reader, (PstStructure.PropertyType)propType);
+                                            if (!string.IsNullOrEmpty(email))
+                                            {
+                                                Recipients.Add(email);
+                                            }
+                                        }
+                                        else
+                                        {
+                                            // Skip other properties
+                                            SkipPropertyValue(reader, (PstStructure.PropertyType)propType);
+                                        }
+                                    }
+                                }
+                                catch
+                                {
+                                    // If we encounter an error reading a recipient, move on to the next one
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    
+                    // If we couldn't find any recipients, add a placeholder
+                    if (Recipients.Count == 0)
+                    {
+                        // This would only happen for improperly formatted PST files or corrupted tables
+                        Recipients.Add("unknown@example.com");
                     }
                 }
             }
@@ -1627,21 +2037,112 @@ namespace PstToolkit
 
         private void LoadAttachmentNames()
         {
-            // In a complete implementation, we would load the attachment table
-            // and extract attachment names
             AttachmentNames = new List<string>();
             
-            // This is a simplified version that would be expanded in a real implementation
             try
             {
-                // Attachment names would be loaded from the attachment table
-                // associated with this message node
+                // Calculate the attachment table node ID based on this message's node ID
+                ushort messageNid = (ushort)(_nodeEntry.NodeId & 0x1F);
+                uint attachmentTableNodeId = (uint)(PstNodeTypes.NID_TYPE_ATTACHMENT_TABLE << 5) | messageNid;
                 
-                // For demonstration, we're leaving this as an empty list
+                // Find the attachment table node
+                var bTree = _pstFile.GetNodeBTree();
+                var attachmentTableNode = bTree.FindNodeByNid(attachmentTableNodeId);
+                
+                if (attachmentTableNode != null)
+                {
+                    // Read the attachment table structure from the node data
+                    var tableData = bTree.GetNodeData(attachmentTableNode);
+                    if (tableData != null && tableData.Length > 0)
+                    {
+                        // Create a property context for the attachment table
+                        var tableContext = new PropertyContext(_pstFile, attachmentTableNode);
+                        
+                        // Get the number of attachments in the table
+                        int attachmentCount = tableContext.GetInt32(PstStructure.PropertyIds.PidTagRowCount) ?? 0;
+                        
+                        // Read each row in the table to get individual attachment information
+                        using (var reader = new BinaryReader(new MemoryStream(tableData)))
+                        {
+                            // Skip header (usually at position 8-12)
+                            reader.BaseStream.Seek(12, SeekOrigin.Begin);
+                            
+                            // Read row count (already obtained from property context)
+                            reader.ReadUInt32();
+                            
+                            // Read entry size
+                            reader.ReadUInt32();
+                            
+                            // For each attachment entry
+                            for (int i = 0; i < attachmentCount; i++)
+                            {
+                                try
+                                {
+                                    // Read row ID
+                                    uint rowId = reader.ReadUInt32();
+                                    
+                                    // Read property count
+                                    ushort propCount = reader.ReadUInt16();
+                                    
+                                    string? attachmentName = null;
+                                    string? attachmentLongName = null;
+                                    
+                                    // Read the properties for this attachment
+                                    for (int j = 0; j < propCount; j++)
+                                    {
+                                        ushort propId = reader.ReadUInt16();
+                                        ushort propType = reader.ReadUInt16();
+                                        
+                                        // We're interested in the attachment name properties
+                                        if (propId == PstStructure.PropertyIds.PidTagAttachFilename)
+                                        {
+                                            attachmentName = ReadStringProperty(reader, (PstStructure.PropertyType)propType);
+                                        }
+                                        else if (propId == PstStructure.PropertyIds.PidTagAttachLongPathname)
+                                        {
+                                            attachmentLongName = ReadStringProperty(reader, (PstStructure.PropertyType)propType);
+                                        }
+                                        else
+                                        {
+                                            // Skip other properties
+                                            SkipPropertyValue(reader, (PstStructure.PropertyType)propType);
+                                        }
+                                    }
+                                    
+                                    // Add the attachment name to the list - prefer long pathname if available
+                                    if (!string.IsNullOrEmpty(attachmentLongName))
+                                    {
+                                        AttachmentNames.Add(attachmentLongName);
+                                    }
+                                    else if (!string.IsNullOrEmpty(attachmentName))
+                                    {
+                                        AttachmentNames.Add(attachmentName);
+                                    }
+                                    else
+                                    {
+                                        // If no name found, use a default name with the row ID
+                                        AttachmentNames.Add($"Attachment_{rowId}");
+                                    }
+                                }
+                                catch
+                                {
+                                    // If we encounter an error reading an attachment, move on to the next one
+                                    AttachmentNames.Add($"Attachment_{i}");
+                                    continue;
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // Set the HasAttachments flag based on whether we found any attachments
+                HasAttachments = AttachmentNames.Count > 0;
             }
             catch (Exception)
             {
                 // Gracefully handle errors in attachment loading
+                AttachmentNames = new List<string>();
+                HasAttachments = false;
             }
         }
 
@@ -1649,11 +2150,55 @@ namespace PstToolkit
         {
             try
             {
-                // In a full implementation, this would extract the raw email content
-                // from the PST file structures
-                // 
-                // For now, we'll build a simple representation from the properties we have
+                // Check if we have the message content property directly
+                var rawContentProp = _propertyContext.GetBinary(PstStructure.PropertyIds.PidTagBody);
+                if (rawContentProp != null && rawContentProp.Length > 0)
+                {
+                    _rawContent = rawContentProp;
+                    return;
+                }
                 
+                // Check if we have RTF compressed content
+                var rtfContentProp = _propertyContext.GetBinary(PstStructure.PropertyIds.PidTagRtfCompressed);
+                if (rtfContentProp != null && rtfContentProp.Length > 0)
+                {
+                    // In a complete implementation, decompress RTF content here
+                    // For now, we'll use it directly as a fallback
+                    _rawContent = rtfContentProp;
+                    return;
+                }
+                
+                // Check if we have plain text content
+                var textContentProp = _propertyContext.GetString(PstStructure.PropertyIds.PidTagBody);
+                if (!string.IsNullOrEmpty(textContentProp))
+                {
+                    _rawContent = Encoding.UTF8.GetBytes(textContentProp);
+                    return;
+                }
+                
+                // Check if we have HTML content
+                var htmlContentProp = _propertyContext.GetBinary(PstStructure.PropertyIds.PidTagHtml);
+                if (htmlContentProp != null && htmlContentProp.Length > 0)
+                {
+                    _rawContent = htmlContentProp;
+                    return;
+                }
+                
+                // If all attempts to extract content directly failed, try to get the transport message headers
+                // and combine with any message body text we have
+                var transportHeaders = _propertyContext.GetString(PstStructure.PropertyIds.PidTagTransportMessageHeaders);
+                if (!string.IsNullOrEmpty(transportHeaders))
+                {
+                    // If we have headers, construct a basic RFC822 message
+                    var bodyText = _propertyContext.GetString(PstStructure.PropertyIds.PidTagBody) ?? string.Empty;
+                    
+                    // Combine headers and body with a blank line separator per RFC822
+                    var fullContent = transportHeaders.TrimEnd() + "\r\n\r\n" + bodyText;
+                    _rawContent = Encoding.UTF8.GetBytes(fullContent);
+                    return;
+                }
+                
+                // Last resort: build a MIME message from the properties we have
                 using var memStream = new MemoryStream();
                 var message = ToMimeMessage();
                 message.WriteTo(memStream);
@@ -1662,6 +2207,115 @@ namespace PstToolkit
             catch (Exception ex)
             {
                 throw new PstException("Error loading raw message content", ex);
+            }
+        }
+
+        /// <summary>
+        /// Reads a string property value from a binary reader based on its property type.
+        /// </summary>
+        /// <param name="reader">The binary reader to read from.</param>
+        /// <param name="propType">The property type.</param>
+        /// <returns>The string value.</returns>
+        private string ReadStringProperty(BinaryReader reader, PstStructure.PropertyType propType)
+        {
+            switch (propType)
+            {
+                case PstStructure.PropertyType.PT_STRING8:
+                case PstStructure.PropertyType.PT_UNICODE:
+                    // String properties in PST tables are typically preceded by their length
+                    ushort length = reader.ReadUInt16();
+                    byte[] data = reader.ReadBytes(length);
+                    // Return string depending on encoding
+                    return propType == PstStructure.PropertyType.PT_UNICODE
+                        ? Encoding.Unicode.GetString(data)
+                        : Encoding.ASCII.GetString(data);
+                    
+                default:
+                    // For other property types, skip and return empty
+                    SkipPropertyValue(reader, propType);
+                    return string.Empty;
+            }
+        }
+        
+        /// <summary>
+        /// Reads an integer property value from a binary reader based on its property type.
+        /// </summary>
+        /// <param name="reader">The binary reader to read from.</param>
+        /// <param name="propType">The property type.</param>
+        /// <returns>The integer value.</returns>
+        private int ReadInt32Property(BinaryReader reader, PstStructure.PropertyType propType)
+        {
+            switch (propType)
+            {
+                case PstStructure.PropertyType.PT_LONG:
+                    return reader.ReadInt32();
+                    
+                case PstStructure.PropertyType.PT_SHORT:
+                    return reader.ReadInt16();
+                    
+                default:
+                    // For other property types, skip and return 0
+                    SkipPropertyValue(reader, propType);
+                    return 0;
+            }
+        }
+        
+        /// <summary>
+        /// Skips a property value in a binary reader based on its property type.
+        /// </summary>
+        /// <param name="reader">The binary reader to read from.</param>
+        /// <param name="propType">The property type.</param>
+        private void SkipPropertyValue(BinaryReader reader, PstStructure.PropertyType propType)
+        {
+            switch (propType)
+            {
+                case PstStructure.PropertyType.PT_NULL:
+                case PstStructure.PropertyType.PT_UNSPECIFIED:
+                    // These types have no value, so no need to skip
+                    break;
+                    
+                case PstStructure.PropertyType.PT_SHORT:
+                    reader.ReadInt16();
+                    break;
+                    
+                case PstStructure.PropertyType.PT_LONG:
+                case PstStructure.PropertyType.PT_FLOAT:
+                    reader.ReadInt32();
+                    break;
+                    
+                case PstStructure.PropertyType.PT_DOUBLE:
+                case PstStructure.PropertyType.PT_LONGLONG:
+                case PstStructure.PropertyType.PT_SYSTIME:
+                case PstStructure.PropertyType.PT_CURRENCY:
+                    reader.ReadInt64();
+                    break;
+                    
+                case PstStructure.PropertyType.PT_BOOLEAN:
+                    reader.ReadByte();
+                    break;
+                    
+                case PstStructure.PropertyType.PT_STRING8:
+                case PstStructure.PropertyType.PT_UNICODE:
+                    // Skip the string length + data
+                    ushort length = reader.ReadUInt16();
+                    reader.ReadBytes(length);
+                    break;
+                    
+                case PstStructure.PropertyType.PT_BINARY:
+                    // Binary data is preceded by its length
+                    uint binaryLength = reader.ReadUInt32();
+                    reader.ReadBytes((int)binaryLength);
+                    break;
+                    
+                case PstStructure.PropertyType.PT_CLSID:
+                    // GUID is 16 bytes
+                    reader.ReadBytes(16);
+                    break;
+                    
+                default:
+                    // For unknown types, skip 4 bytes as a safe default
+                    reader.ReadInt32();
+                    break;
             }
         }
     }

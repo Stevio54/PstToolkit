@@ -50,6 +50,7 @@ namespace PstToolkit.Utils
             public const ushort PidTagBody = 0x1000;
             public const ushort PidTagHtml = 0x1013;
             public const ushort PidTagRtfCompressed = 0x1009;
+            public const ushort PidTagTransportMessageHeaders = 0x007D;
             public const ushort PidTagImportance = 0x0017;
             
             // Recipient Properties
@@ -67,12 +68,17 @@ namespace PstToolkit.Utils
             public const ushort PidTagAttachPathname = 0x3708;
             public const ushort PidTagAttachLongPathname = 0x370D;
             public const ushort PidTagAttachMimeTag = 0x370E;
+            public const ushort PidTagAttachmentCount = 0x0E08; // Number of attachments
             
             // Folder Properties
             public const ushort PidTagContainerClass = 0x3613;
             public const ushort PidTagContentCount = 0x3602;
             public const ushort PidTagContentUnreadCount = 0x3603;
             public const ushort PidTagSubfolders = 0x360A;
+            
+            // Table Properties
+            public const ushort PidTagRowCount = 0x3002; // Row count in a table
+            public const ushort PidTagRowType = 0x3004; // Row type in a table
         }
 
         /// <summary>

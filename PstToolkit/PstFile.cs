@@ -62,6 +62,26 @@ namespace PstToolkit
         public bool IsReadOnly => _isReadOnly;
         
         /// <summary>
+        /// Gets the PST file header.
+        /// </summary>
+        internal PstFormatHeader Header => _header!;
+        
+        // GetNodeBTree exists at line 628, removed duplicate to fix build error
+        
+        /// <summary>
+        /// Gets the file stream for the PST file.
+        /// </summary>
+        /// <returns>The FileStream of the PST file.</returns>
+        internal FileStream GetFileStream()
+        {
+            if (_fileStream == null)
+            {
+                throw new PstAccessException("File stream is not available. The PST file may be closed.");
+            }
+            return _fileStream;
+        }
+        
+        /// <summary>
         /// Gets the size of the PST file.
         /// </summary>
         /// <returns>The file size in bytes.</returns>

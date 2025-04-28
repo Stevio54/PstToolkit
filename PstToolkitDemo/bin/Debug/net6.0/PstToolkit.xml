@@ -127,6 +127,11 @@
             Gets the root node ID of the block B-tree.
             </summary>
         </member>
+        <member name="P:PstToolkit.Formats.PstFormatHeader.BTreeOnHeapStartPage">
+            <summary>
+            Gets the starting page offset for the B-tree heap structure.
+            </summary>
+        </member>
         <member name="P:PstToolkit.Formats.PstFormatHeader.RootFolderId">
             <summary>
             Gets the ID of the root folder.
@@ -156,6 +161,12 @@
             Writes the PST file header to the given writer.
             </summary>
             <param name="writer">The binary writer to write to.</param>
+        </member>
+        <member name="M:PstToolkit.Formats.PstFormatHeader.ValidateHeader">
+            <summary>
+            Performs extended validation of the PST header.
+            </summary>
+            <returns>True if the header is valid, false otherwise.</returns>
         </member>
         <member name="T:PstToolkit.Formats.PstNodeTypes">
             <summary>
@@ -443,6 +454,17 @@
             <summary>
             Gets whether the PST file is open in read-only mode.
             </summary>
+        </member>
+        <member name="P:PstToolkit.PstFile.Header">
+            <summary>
+            Gets the PST file header.
+            </summary>
+        </member>
+        <member name="M:PstToolkit.PstFile.GetFileStream">
+            <summary>
+            Gets the file stream for the PST file.
+            </summary>
+            <returns>The FileStream of the PST file.</returns>
         </member>
         <member name="M:PstToolkit.PstFile.GetFileSize">
             <summary>
@@ -1032,6 +1054,29 @@
             <param name="emailAddress">The email address of the recipient to remove.</param>
             <returns>True if the recipient was removed, false if not found.</returns>
         </member>
+        <member name="M:PstToolkit.PstMessage.ReadStringProperty(System.IO.BinaryReader,PstToolkit.Utils.PstStructure.PropertyType)">
+            <summary>
+            Reads a string property value from a binary reader based on its property type.
+            </summary>
+            <param name="reader">The binary reader to read from.</param>
+            <param name="propType">The property type.</param>
+            <returns>The string value.</returns>
+        </member>
+        <member name="M:PstToolkit.PstMessage.ReadInt32Property(System.IO.BinaryReader,PstToolkit.Utils.PstStructure.PropertyType)">
+            <summary>
+            Reads an integer property value from a binary reader based on its property type.
+            </summary>
+            <param name="reader">The binary reader to read from.</param>
+            <param name="propType">The property type.</param>
+            <returns>The integer value.</returns>
+        </member>
+        <member name="M:PstToolkit.PstMessage.SkipPropertyValue(System.IO.BinaryReader,PstToolkit.Utils.PstStructure.PropertyType)">
+            <summary>
+            Skips a property value in a binary reader based on its property type.
+            </summary>
+            <param name="reader">The binary reader to read from.</param>
+            <param name="propType">The property type.</param>
+        </member>
         <member name="T:PstToolkit.Utils.BTreeOnHeap">
             <summary>
             Represents a B-tree structure on a heap in a PST file.
@@ -1127,6 +1172,14 @@
             <param name="node">The node to update.</param>
             <returns>True if the update was successful, false otherwise.</returns>
         </member>
+        <member name="M:PstToolkit.Utils.BTreeOnHeap.UpdateNodeData(PstToolkit.Utils.NdbNodeEntry,System.Byte[])">
+            <summary>
+            Updates the data associated with a node in the B-tree.
+            </summary>
+            <param name="node">The node whose data to update.</param>
+            <param name="newData">The new data for the node.</param>
+            <returns>True if the node data was updated, false otherwise.</returns>
+        </member>
         <member name="M:PstToolkit.Utils.BTreeOnHeap.GetHighestNodeId(System.UInt16)">
             <summary>
             Gets the highest node ID for a specific node type in the B-tree.
@@ -1136,7 +1189,7 @@
         </member>
         <member name="M:PstToolkit.Utils.BTreeOnHeap.AllocateSpace(System.Int32)">
             <summary>
-            Allocates space for data in the heap.
+            Allocates space for data in the PST heap.
             </summary>
             <param name="dataLength">The length of the data to allocate space for.</param>
             <returns>The offset where the data should be written.</returns>
@@ -1420,6 +1473,12 @@
             </summary>
             <param name="nodeId">The node ID.</param>
             <returns>The node type.</returns>
+        </member>
+        <member name="M:PstToolkit.Utils.PropertyContext.SerializeProperties">
+            <summary>
+            Serializes the properties dictionary to a binary format suitable for storing in a PST file.
+            </summary>
+            <returns>The serialized property data as a byte array.</returns>
         </member>
         <member name="T:PstToolkit.Utils.PstBinaryReader">
             <summary>

@@ -17,6 +17,7 @@ namespace PstToolkit.Utils
         private readonly NdbNodeEntry _nodeEntry;
         private Dictionary<uint, object>? _properties;
         private bool _isAnsi;
+        private bool _dirty; // Tracks whether the properties have been modified
 
         /// <summary>
         /// Initializes a new instance of the <see cref="PropertyContext"/> class.
@@ -215,8 +216,8 @@ namespace PstToolkit.Utils
                 uint key = MakePropertyId(propertyId, propertyType);
                 _properties![key] = value;
                 
-                // In a real implementation, we'd mark the property context as dirty
-                // and schedule it to be written back to the PST file
+                // Mark the property context as dirty so changes will be saved
+                _dirty = true;
             }
             catch (Exception ex)
             {
@@ -244,8 +245,11 @@ namespace PstToolkit.Utils
                 uint key = MakePropertyId(propertyId, propertyType);
                 bool result = _properties!.Remove(key);
                 
-                // In a real implementation, we'd mark the property context as dirty
-                // and schedule it to be written back to the PST file
+                // Mark the property context as dirty so changes will be saved
+                if (result)
+                {
+                    _dirty = true;
+                }
                 
                 return result;
             }
@@ -422,7 +426,7 @@ namespace PstToolkit.Utils
                     // For unsupported types, skip the bytes and return null
                     if (size > 0)
                         reader.BaseStream.Seek(size, SeekOrigin.Current);
-                    return null;
+                    return null!; // Using null! to suppress the nullable warning
             }
         }
         
@@ -452,12 +456,47 @@ namespace PstToolkit.Utils
             
             try
             {
-                // In a real implementation, this would:
-                // 1. Serialize the properties dictionary to the appropriate format
-                // 2. Update the property context in the node
-                // 3. Write the changes back to the PST file
-                
-                // Not implemented in this demonstration
+                // Only save if the properties have been modified
+                if (_dirty && _properties.Count > 0 && _nodeEntry != null)
+                {
+                    // 1. Serialize the properties dictionary to binary format
+                    byte[] serializedData = SerializeProperties();
+                    
+                    // 2. Update the node data with the serialized properties
+                    _nodeEntry.DataSize = (uint)serializedData.Length;
+                    
+                    if (_nodeEntry.DataOffset == 0 || serializedData.Length > _nodeEntry.DataSize)
+                    {
+                        // Need to allocate new space for the data
+                        var bTree = _pstFile.GetNodeBTree();
+                        if (bTree != null)
+                        {
+                            _nodeEntry.DataOffset = bTree.AllocateSpace(serializedData.Length);
+                            
+                            // 3. Write the serialized data to the PST file
+                            bTree.WriteDataToOffset(_nodeEntry.DataOffset, serializedData);
+                            
+                            // 4. Update the node entry in the B-tree
+                            bTree.UpdateNode(_nodeEntry);
+                        }
+                    }
+                    else
+                    {
+                        // Use existing space in the file
+                        var bTree = _pstFile.GetNodeBTree();
+                        if (bTree != null)
+                        {
+                            // 3. Write the serialized data to the PST file
+                            bTree.WriteDataToOffset(_nodeEntry.DataOffset, serializedData);
+                            
+                            // 4. Update the node entry in the B-tree
+                            bTree.UpdateNode(_nodeEntry);
+                        }
+                    }
+                    
+                    // Reset the dirty flag
+                    _dirty = false;
+                }
             }
             catch (Exception ex)
             {
@@ -686,6 +725,165 @@ namespace PstToolkit.Utils
             return (ushort)((nodeId >> 5) & 0x1F);
         }
         
-        // Note: GetAllProperties method already exists elsewhere in the class
+        /// <summary>
+        /// Serializes the properties dictionary to a binary format suitable for storing in a PST file.
+        /// </summary>
+        /// <returns>The serialized property data as a byte array.</returns>
+        private byte[] SerializeProperties()
+        {
+            if (_properties == null || _properties.Count == 0)
+            {
+                return Array.Empty<byte>();
+            }
+            
+            try
+            {
+                using (var memStream = new MemoryStream())
+                using (var writer = new PstBinaryWriter(memStream))
+                {
+                    // Write the property context header
+                    if (_isAnsi)
+                    {
+                        // For ANSI format, write the property count directly
+                        writer.Write(_properties.Count);
+                    }
+                    else
+                    {
+                        // For Unicode format, write a signature followed by count
+                        writer.Write(0x4E425001); // "NB" + version
+                        writer.Write(_properties.Count);
+                    }
+                    
+                    // Write each property
+                    foreach (var kvp in _properties)
+                    {
+                        uint combinedKey = kvp.Key;
+                        
+                        // Extract property ID and type from the combined key
+                        ushort propId = (ushort)(combinedKey & 0xFFFF);
+                        ushort propTypeValue = (ushort)((combinedKey >> 16) & 0xFFFF);
+                        PropertyType propType = (PropertyType)propTypeValue;
+                        
+                        // Write property ID and type
+                        writer.Write(propId);
+                        writer.Write(propTypeValue);
+                        
+                        // For variable-length types, we need to write the size first
+                        bool isVariableLength = IsVariableLengthType(propType);
+                        
+                        // Serialize the property value based on type
+                        if (kvp.Value == null)
+                        {
+                            // For variable-length properties, write a zero size
+                            if (isVariableLength)
+                            {
+                                writer.Write(0);
+                            }
+                            continue;
+                        }
+                        
+                        switch (propType)
+                        {
+                            case PropertyType.PT_BOOLEAN:
+                                if (kvp.Value is bool boolValue)
+                                {
+                                    writer.Write(boolValue);
+                                }
+                                break;
+                            
+                            case PropertyType.PT_LONG:
+                                if (kvp.Value is int intValue)
+                                {
+                                    writer.Write(intValue);
+                                }
+                                break;
+                            
+                            case PropertyType.PT_LONGLONG:
+                                if (kvp.Value is long longValue)
+                                {
+                                    writer.Write(longValue);
+                                }
+                                break;
+                            
+                            case PropertyType.PT_DOUBLE:
+                                if (kvp.Value is double doubleValue)
+                                {
+                                    writer.Write(doubleValue);
+                                }
+                                break;
+                            
+                            case PropertyType.PT_SYSTIME:
+                                if (kvp.Value is DateTime dateTime)
+                                {
+                                    writer.Write(dateTime.ToFileTime());
+                                }
+                                break;
+                            
+                            case PropertyType.PT_STRING8:
+                                if (kvp.Value is string str8)
+                                {
+                                    byte[] strBytes = Encoding.Default.GetBytes(str8);
+                                    // Write the size first for variable-length properties
+                                    writer.Write(strBytes.Length);
+                                    // Then write the string bytes
+                                    writer.Write(strBytes);
+                                }
+                                else
+                                {
+                                    // Empty string
+                                    writer.Write(0);
+                                }
+                                break;
+                            
+                            case PropertyType.PT_UNICODE:
+                                if (kvp.Value is string strUnicode)
+                                {
+                                    byte[] strBytes = Encoding.Unicode.GetBytes(strUnicode);
+                                    // Write the size first for variable-length properties
+                                    writer.Write(strBytes.Length);
+                                    // Then write the string bytes
+                                    writer.Write(strBytes);
+                                }
+                                else
+                                {
+                                    // Empty string
+                                    writer.Write(0);
+                                }
+                                break;
+                            
+                            case PropertyType.PT_BINARY:
+                                if (kvp.Value is byte[] bytes)
+                                {
+                                    // Write the size first for variable-length properties
+                                    writer.Write(bytes.Length);
+                                    // Then write the bytes
+                                    writer.Write(bytes);
+                                }
+                                else
+                                {
+                                    // Empty binary data
+                                    writer.Write(0);
+                                }
+                                break;
+                            
+                            default:
+                                // For unsupported types, write a placeholder
+                                if (isVariableLength)
+                                {
+                                    writer.Write(0); // Zero size
+                                }
+                                break;
+                        }
+                    }
+                    
+                    return memStream.ToArray();
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error serializing properties: {ex.Message}");
+                return Array.Empty<byte>();
+            }
+        }
     }
 }
