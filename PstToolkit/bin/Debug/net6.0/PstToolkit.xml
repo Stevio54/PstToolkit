@@ -1080,6 +1080,13 @@
             <param name="data">The data to store in the node.</param>
             <returns>The new node entry.</returns>
         </member>
+        <member name="M:PstToolkit.Utils.BTreeOnHeap.AddNode(PstToolkit.Utils.NdbNodeEntry)">
+            <summary>
+            Adds a node to the B-tree without any data.
+            </summary>
+            <param name="node">The node to add.</param>
+            <returns>The added node entry.</returns>
+        </member>
         <member name="M:PstToolkit.Utils.BTreeOnHeap.AddNode(PstToolkit.Utils.NdbNodeEntry,System.Byte[])">
             <summary>
             Adds an existing node entry to the B-tree.
@@ -1119,6 +1126,13 @@
             </summary>
             <param name="node">The node to update.</param>
             <returns>True if the update was successful, false otherwise.</returns>
+        </member>
+        <member name="M:PstToolkit.Utils.BTreeOnHeap.GetHighestNodeId(System.UInt16)">
+            <summary>
+            Gets the highest node ID for a specific node type in the B-tree.
+            </summary>
+            <param name="nodeType">The node type to search for.</param>
+            <returns>The highest node ID of the specified type, or 0 if none found.</returns>
         </member>
         <member name="M:PstToolkit.Utils.BTreeOnHeap.AllocateSpace(System.Int32)">
             <summary>
@@ -1176,7 +1190,7 @@
         </member>
         <member name="P:PstToolkit.Utils.NdbNodeEntry.NodeType">
             <summary>
-            Gets the node type.
+            Gets or sets the node type.
             </summary>
         </member>
         <member name="P:PstToolkit.Utils.NdbNodeEntry.DataOffset">

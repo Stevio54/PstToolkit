@@ -476,6 +476,40 @@ namespace PstToolkit.Utils
         }
         
         /// <summary>
+        /// Adds a node to the B-tree without any data.
+        /// </summary>
+        /// <param name="node">The node to add.</param>
+        /// <returns>The added node entry.</returns>
+        public NdbNodeEntry AddNode(NdbNodeEntry node)
+        {
+            if (_pstFile.IsReadOnly)
+            {
+                throw new PstAccessException("Cannot add a node to a read-only PST file.");
+            }
+            
+            try
+            {
+                Console.WriteLine($"AddNode: Adding node {node.NodeId} with parent {node.ParentId}" +
+                    (node.DisplayName != null ? $", name: {node.DisplayName}" : ""));
+                
+                // Add the node to our cache
+                _nodeCache[node.NodeId] = node;
+                
+                // Update the B-tree structure
+                UpdateBTreeStructure(node.NodeId);
+                
+                // Save changes to the file
+                SaveNodesToFile();
+                
+                return node;
+            }
+            catch (Exception ex)
+            {
+                throw new PstException($"Failed to add node {node.NodeId} to B-tree", ex);
+            }
+        }
+        
+        /// <summary>
         /// Adds an existing node entry to the B-tree.
         /// </summary>
         /// <param name="node">The node entry to add.</param>
@@ -636,11 +670,39 @@ namespace PstToolkit.Utils
         }
         
         /// <summary>
+        /// Gets the highest node ID for a specific node type in the B-tree.
+        /// </summary>
+        /// <param name="nodeType">The node type to search for.</param>
+        /// <returns>The highest node ID of the specified type, or 0 if none found.</returns>
+        public uint GetHighestNodeId(ushort nodeType)
+        {
+            uint highestId = 0;
+            
+            // Filter nodes by type
+            var nodesOfType = _nodeCache.Values
+                .Where(n => (n.NodeId & 0xFF000000) == (nodeType << 24))
+                .ToList();
+                
+            if (nodesOfType.Any())
+            {
+                // Find the highest node ID
+                highestId = nodesOfType.Max(n => n.NodeId);
+            }
+            else
+            {
+                // If no nodes of this type exist, create a base ID
+                highestId = (uint)nodeType << 24;
+            }
+            
+            return highestId;
+        }
+        
+        /// <summary>
         /// Allocates space for data in the heap.
         /// </summary>
         /// <param name="dataLength">The length of the data to allocate space for.</param>
         /// <returns>The offset where the data should be written.</returns>
-        private ulong AllocateSpace(int dataLength)
+        public ulong AllocateSpace(int dataLength)
         {
             // In a real PST implementation, this would manage heap blocks and allocate space
             // For our implementation, we'll simulate by allocating at a "next available offset"
@@ -673,7 +735,7 @@ namespace PstToolkit.Utils
         /// </summary>
         /// <param name="offset">The offset where to write the data.</param>
         /// <param name="data">The data to write.</param>
-        private void WriteDataToOffset(ulong offset, byte[] data)
+        public void WriteDataToOffset(ulong offset, byte[] data)
         {
             // In a real implementation, this would write to the PST file stream
             // For now, we'll just simulate this operation

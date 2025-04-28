@@ -24,9 +24,9 @@ namespace PstToolkit.Utils
         public uint ParentId { get; set; }
 
         /// <summary>
-        /// Gets the node type.
+        /// Gets or sets the node type.
         /// </summary>
-        public ushort NodeType { get; }
+        public ushort NodeType { get; set; }
 
         /// <summary>
         /// Gets or sets the data offset in the file.
