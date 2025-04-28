@@ -60,6 +60,18 @@ namespace PstToolkit
         /// Gets whether the PST file is open in read-only mode.
         /// </summary>
         public bool IsReadOnly => _isReadOnly;
+        
+        /// <summary>
+        /// Gets the size of the PST file.
+        /// </summary>
+        /// <returns>The file size in bytes.</returns>
+        internal ulong GetFileSize()
+        {
+            if (_fileStream == null)
+                throw new PstException("File stream is not initialized");
+                
+            return (ulong)_fileStream.Length;
+        }
 
         /// <summary>
         /// Opens an existing PST file for reading or writing.
@@ -734,6 +746,11 @@ namespace PstToolkit
             }
         }
 
+        /// <summary>
+        /// Registers a folder in the folder cache.
+        /// </summary>
+        /// <param name="folderId">The folder ID.</param>
+        /// <param name="folder">The folder object.</param>
         internal void RegisterFolder(uint folderId, PstFolder folder)
         {
             if (_folderCache == null)
@@ -744,6 +761,11 @@ namespace PstToolkit
             _folderCache[folderId] = folder;
         }
 
+        /// <summary>
+        /// Gets a folder from the folder cache.
+        /// </summary>
+        /// <param name="folderId">The folder ID.</param>
+        /// <returns>The folder, or null if not found in the cache.</returns>
         internal PstFolder? GetCachedFolder(uint folderId)
         {
             if (_folderCache == null)

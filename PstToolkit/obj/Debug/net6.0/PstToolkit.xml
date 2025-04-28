@@ -1057,7 +1057,12 @@
             Removes a node from the B-tree.
             </summary>
             <param name="nodeId">The node ID to remove.</param>
-            <returns>True if the node was removed, false if it wasn't found.</returns>
+            <returns>True if the node was found and removed, false otherwise.</returns>
+        </member>
+        <member name="M:PstToolkit.Utils.BTreeOnHeap.SaveNodesToFile">
+            <summary>
+            Saves the node cache to a file for persistence between runs.
+            </summary>
         </member>
         <member name="T:PstToolkit.Utils.NdbNodeEntry">
             <summary>
@@ -1071,12 +1076,12 @@
         </member>
         <member name="P:PstToolkit.Utils.NdbNodeEntry.DataId">
             <summary>
-            Gets the data ID.
+            Gets or sets the data ID.
             </summary>
         </member>
         <member name="P:PstToolkit.Utils.NdbNodeEntry.ParentId">
             <summary>
-            Gets the parent node ID.
+            Gets or sets the parent node ID.
             </summary>
         </member>
         <member name="P:PstToolkit.Utils.NdbNodeEntry.NodeType">

@@ -8,6 +8,25 @@ namespace PstToolkit.Utils
     internal static class PstStructure
     {
         /// <summary>
+        /// Property tags for common PST properties.
+        /// </summary>
+        public static class PropTags
+        {
+            // Common property tags
+            public const ushort PR_DISPLAY_NAME = 0x3001;
+            public const ushort PR_SUBJECT = 0x0037;
+            public const ushort PR_NORMALIZED_SUBJECT = 0x0E1D;
+            public const ushort PR_SENDER_NAME = 0x0C1A;
+            public const ushort PR_SENT_REPRESENTING_NAME = 0x0042;
+            public const ushort PR_SENDER_EMAIL_ADDRESS = 0x0C1F;
+            public const ushort PR_SENT_REPRESENTING_EMAIL_ADDRESS = 0x0065;
+            public const ushort PR_CLIENT_SUBMIT_TIME = 0x0039;
+            public const ushort PR_MESSAGE_DELIVERY_TIME = 0x0E06;
+            public const ushort PR_MESSAGE_SIZE = 0x0E08;
+            public const ushort PR_HASATTACH = 0x0E1B;
+        }
+        
+        /// <summary>
         /// Property ID constants for common PST properties.
         /// </summary>
         public static class PropertyIds

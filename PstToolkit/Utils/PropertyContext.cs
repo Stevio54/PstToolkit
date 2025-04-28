@@ -286,6 +286,155 @@ namespace PstToolkit.Utils
         }
         
         /// <summary>
+        /// Loads property context data from a node.
+        /// </summary>
+        /// <param name="node">The node to load properties from.</param>
+        /// <returns>True if properties were loaded successfully, false otherwise.</returns>
+        public bool Load(NdbNodeEntry node)
+        {
+            if (node == null)
+                return false;
+                
+            try
+            {
+                // Read the raw data for this node
+                byte[] nodeData = node.ReadData(_pstFile);
+                
+                if (nodeData.Length == 0)
+                {
+                    // No data to load properties from
+                    return false;
+                }
+                
+                // Parse the property context from the node data
+                using (var memStream = new MemoryStream(nodeData))
+                using (var reader = new PstBinaryReader(memStream))
+                {
+                    // First 4 bytes should contain the property context signature or count
+                    uint signature = reader.ReadUInt32();
+                    
+                    // Determine number of properties (implementation may vary based on PST format)
+                    int propertyCount;
+                    
+                    // Simple format detection - older PST formats use a different signature
+                    if (signature == 0x4E425001) // "NB" + version
+                    {
+                        // Unicode format typically uses a signature followed by a count
+                        propertyCount = reader.ReadInt32();
+                    }
+                    else
+                    {
+                        // ANSI format often uses the first 4 bytes directly as the count
+                        propertyCount = (int)signature;
+                    }
+                    
+                    // Enhanced safety check to prevent excessive memory allocation
+                    if (propertyCount < 0 || propertyCount > 10000) // Reasonable upper limit
+                    {
+                        // Instead of throwing an exception, log the error and use an empty property set
+                        Console.WriteLine($"Warning: Invalid property count ({propertyCount}), using fallback properties");
+                        // Initialize empty properties dictionary and let fallback code below handle initialization
+                        _properties = new Dictionary<uint, object>();
+                        return false;
+                    }
+                    
+                    _properties = new Dictionary<uint, object>(propertyCount);
+                    
+                    // Read each property entry
+                    for (int i = 0; i < propertyCount; i++)
+                    {
+                        // Each property has an ID, type, and value
+                        ushort propertyId = reader.ReadUInt16();
+                        ushort propertyTypeValue = reader.ReadUInt16();
+                        PropertyType propertyType = (PropertyType)propertyTypeValue;
+                        
+                        // Variable-length properties have their size specified
+                        int valueSize = 0;
+                        
+                        // Check if this is a variable-length property type
+                        bool isVariableLength = IsVariableLengthType(propertyType);
+                        if (isVariableLength)
+                        {
+                            valueSize = reader.ReadInt32();
+                            
+                            // Safety check for value size
+                            if (valueSize < 0 || valueSize > nodeData.Length)
+                            {
+                                // Skip this property if size is invalid
+                                continue;
+                            }
+                        }
+                        
+                        // Read the actual property value based on its type
+                        object propertyValue = ReadPropertyValue(reader, propertyType, valueSize);
+                        
+                        // Store the property in our dictionary using a combined key
+                        uint combinedKey = MakePropertyId(propertyId, propertyType);
+                        _properties[combinedKey] = propertyValue;
+                    }
+                }
+                
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error loading properties: {ex.Message}");
+                _properties = new Dictionary<uint, object>();
+                return false;
+            }
+        }
+        
+        private object ReadPropertyValue(PstBinaryReader reader, PropertyType type, int size)
+        {
+            switch (type)
+            {
+                case PropertyType.PT_BOOLEAN:
+                    return reader.ReadBoolean();
+                    
+                case PropertyType.PT_LONG:
+                    return reader.ReadInt32();
+                    
+                case PropertyType.PT_LONGLONG:
+                    return reader.ReadInt64();
+                    
+                case PropertyType.PT_DOUBLE:
+                    return reader.ReadDouble();
+                    
+                case PropertyType.PT_SYSTIME:
+                    return DateTime.FromFileTime(reader.ReadInt64());
+                    
+                case PropertyType.PT_STRING8:
+                    if (size <= 0)
+                        return string.Empty;
+                    return reader.ReadString(size, Encoding.Default);
+                    
+                case PropertyType.PT_UNICODE:
+                    if (size <= 0)
+                        return string.Empty;
+                    return reader.ReadString(size, Encoding.Unicode);
+                    
+                case PropertyType.PT_BINARY:
+                    if (size <= 0)
+                        return Array.Empty<byte>();
+                    return reader.ReadBytes(size);
+                    
+                default:
+                    // For unsupported types, skip the bytes and return null
+                    if (size > 0)
+                        reader.BaseStream.Seek(size, SeekOrigin.Current);
+                    return null;
+            }
+        }
+        
+        private bool IsVariableLengthType(PropertyType type)
+        {
+            return type == PropertyType.PT_STRING8 ||
+                   type == PropertyType.PT_UNICODE ||
+                   type == PropertyType.PT_BINARY ||
+                   type == PropertyType.PT_OBJECT;
+        }
+        
+        /// <summary>
         /// Saves any modified properties back to the PST file.
         /// </summary>
         public void Save()
@@ -468,16 +617,7 @@ namespace PstToolkit.Utils
             }
         }
         
-        /// <summary>
-        /// Determines if a property type has variable length storage.
-        /// </summary>
-        private bool IsVariableLengthType(PropertyType propertyType)
-        {
-            return propertyType == PropertyType.PT_STRING8 ||
-                   propertyType == PropertyType.PT_UNICODE ||
-                   propertyType == PropertyType.PT_BINARY ||
-                   propertyType == PropertyType.PT_OBJECT;
-        }
+        // Second IsVariableLengthType method removed as it was duplicate
         
         /// <summary>
         /// Initializes the default properties for a folder when property context cannot be loaded.
