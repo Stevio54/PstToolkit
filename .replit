@@ -32,6 +32,10 @@ args = "dotnet_listmessages"
 task = "workflow.run"
 args = "dotnet_extract"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Build PstToolkit"
+
 [[workflows.workflow]]
 name = "Build and Run PstToolkit"
 author = "agent"
@@ -72,6 +76,14 @@ author = "agent"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "cd PstToolkitDemo && dotnet run extract newtest.pst \"Inbox/Test\" \"extracted\""
+
+[[workflows.workflow]]
+name = "Build PstToolkit"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "dotnet build PstToolkit.sln"
 
 [deployment]
 run = ["sh", "-c", "dotnet run --project PstToolkitDemo/PstToolkitDemo.csproj"]

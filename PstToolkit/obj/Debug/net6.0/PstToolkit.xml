@@ -278,6 +278,21 @@
             <param name="id">The node-specific ID.</param>
             <returns>A new node ID.</returns>
         </member>
+        <member name="T:PstToolkit.FilterLogic">
+            <summary>
+            Defines the logical operator to use when combining multiple filters.
+            </summary>
+        </member>
+        <member name="F:PstToolkit.FilterLogic.All">
+            <summary>
+            All filters must match (AND).
+            </summary>
+        </member>
+        <member name="F:PstToolkit.FilterLogic.Any">
+            <summary>
+            At least one filter must match (OR).
+            </summary>
+        </member>
         <member name="T:PstToolkit.MessageFilter">
             <summary>
             Provides filtering capabilities for messages in PST files.
@@ -307,12 +322,19 @@
             <param name="value2">The second value of the range.</param>
             <returns>The filter instance for method chaining.</returns>
         </member>
+        <member name="M:PstToolkit.MessageFilter.SetLogic(PstToolkit.FilterLogic)">
+            <summary>
+            Sets the logic operator to use when combining multiple filter conditions.
+            </summary>
+            <param name="logic">The filter logic to use (All/AND or Any/OR).</param>
+            <returns>The filter instance for method chaining.</returns>
+        </member>
         <member name="M:PstToolkit.MessageFilter.Matches(PstToolkit.PstMessage)">
             <summary>
-            Applies all filters to the given message and returns true if the message passes all filters.
+            Applies all filters to the given message and returns true if the message passes the filters.
             </summary>
             <param name="message">The message to filter.</param>
-            <returns>True if the message passes all filters, false otherwise.</returns>
+            <returns>True if the message passes the filters based on the logic operator, false otherwise.</returns>
         </member>
         <member name="M:PstToolkit.MessageFilter.Apply(System.Collections.Generic.IEnumerable{PstToolkit.PstMessage})">
             <summary>
@@ -320,6 +342,18 @@
             </summary>
             <param name="messages">The messages to filter.</param>
             <returns>A filtered collection of messages.</returns>
+        </member>
+        <member name="M:PstToolkit.MessageFilter.ApplyParallel(System.Collections.Generic.IList{PstToolkit.PstMessage})">
+            <summary>
+            Applies filters in parallel for better performance on large message sets.
+            </summary>
+            <param name="messages">The messages to filter.</param>
+            <returns>A filtered collection of messages.</returns>
+        </member>
+        <member name="M:PstToolkit.MessageFilter.DetermineBatchSize(System.Int32)">
+            <summary>
+            Determines optimal batch size based on collection size.
+            </summary>
         </member>
         <member name="M:PstToolkit.MessageFilter.ClearFilters">
             <summary>
@@ -443,9 +477,27 @@
             Flushes any pending changes to disk.
             </summary>
         </member>
-        <member name="M:PstToolkit.PstFile.Dispose">
+        <member name="M:PstToolkit.PstFile.FindFolder(System.String)">
             <summary>
             Disposes the PST file, releasing resources.
+            </summary>
+            <summary>
+            Finds a folder by path.
+            </summary>
+            <param name="folderPath">Path to the folder, using '/' as separator (e.g., "Inbox/Subfolder").</param>
+            <returns>The found folder, or null if not found.</returns>
+        </member>
+        <member name="M:PstToolkit.PstFile.GetMessages(System.String,PstToolkit.MessageFilter)">
+            <summary>
+            Gets messages from a folder with filtering.
+            </summary>
+            <param name="folderPath">Path to the folder, using '/' as separator (e.g., "Inbox/Subfolder").</param>
+            <param name="filter">Optional filter to apply to the messages.</param>
+            <returns>A filtered list of messages, or empty list if folder not found.</returns>
+        </member>
+        <member name="M:PstToolkit.PstFile.Dispose">
+            <summary>
+            Disposes resources used by the PST file.
             </summary>
         </member>
         <member name="M:PstToolkit.PstFile.Dispose(System.Boolean)">

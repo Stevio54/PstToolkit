@@ -273,6 +273,30 @@ namespace PstToolkitDemo
                 {
                     Console.WriteLine("Copying folders and filtered messages...");
                     
+                    // Count messages matching the filter criteria
+                    int totalMessages = CountMessages(sourcePst.RootFolder);
+                    int matchingMessages = 0;
+                    CountMatchingMessages(sourcePst.RootFolder, filter, ref matchingMessages);
+                    
+                    Console.WriteLine($"Total messages in source: {totalMessages}");
+                    Console.WriteLine($"Messages matching filter: {matchingMessages}");
+                    
+                    if (matchingMessages == 0)
+                    {
+                        Console.WriteLine("Warning: No messages match the filter criteria.");
+                        Console.Write("Do you want to continue with the copy operation? (y/n): ");
+                        var response = Console.ReadLine()?.ToLower();
+                        if (response != "y" && response != "yes")
+                        {
+                            Console.WriteLine("Operation canceled by user.");
+                            return;
+                        }
+                    }
+                    
+                    // Using stopwatch to track performance
+                    var stopwatch = new System.Diagnostics.Stopwatch();
+                    stopwatch.Start();
+                    
                     // Set up progress reporting
                     int lastPercent = -1;
                     destPst.CopyFrom(sourcePst, filter, progress => {
@@ -284,8 +308,24 @@ namespace PstToolkitDemo
                         }
                     });
                     
+                    stopwatch.Stop();
                     Console.WriteLine("\rProgress: 100%");
-                    Console.WriteLine("Filtered copy completed successfully!");
+                    
+                    // Count messages in destination
+                    int copiedMessages = CountMessages(destPst.RootFolder);
+                    
+                    // Calculate statistics
+                    double timeInSeconds = stopwatch.ElapsedMilliseconds / 1000.0;
+                    double messagesPerSecond = copiedMessages / timeInSeconds;
+                    
+                    Console.WriteLine($"Filtered copy completed successfully in {timeInSeconds:F2} seconds!");
+                    Console.WriteLine($"Copied {copiedMessages} of {matchingMessages} matching messages ({messagesPerSecond:F2} messages/sec)");
+                    
+                    // If there's a difference, explain why
+                    if (copiedMessages != matchingMessages)
+                    {
+                        Console.WriteLine($"Note: {matchingMessages - copiedMessages} messages were skipped due to errors or incompatibility.");
+                    }
                 }
             }
             catch (Exception ex)
@@ -301,10 +341,88 @@ namespace PstToolkitDemo
         static MessageFilter? ParseFilterSpec(string filterSpec)
         {
             // Format examples:
-            // subject:contains:Project Update - Filter messages with subject containing "Project Update"
+            // subject:contains:Project Update - Filter messages with subject containing "Project Update" 
             // sender:equals:john@example.com - Filter messages with sender email exactly matching
             // date:after:2025-04-25 - Filter messages sent after 2025-04-25
+            // Multiple filter formats:
+            // AND - subject:contains:Important AND date:after:2025-04-25
+            // OR - subject:contains:Report OR subject:contains:Summary
             
+            try
+            {
+                // Check for multiple conditions with AND/OR
+                if (filterSpec.Contains(" AND "))
+                {
+                    // Split by AND and create a filter with All (AND) logic
+                    var conditions = filterSpec.Split(new[] { " AND " }, StringSplitOptions.None);
+                    var filter = new MessageFilter().SetLogic(FilterLogic.All);
+                    
+                    foreach (var condition in conditions)
+                    {
+                        var subFilter = ParseSingleFilterCondition(condition);
+                        if (subFilter == null)
+                        {
+                            Console.WriteLine($"Warning: Invalid filter condition: {condition}");
+                            return null;
+                        }
+                        
+                        // Apply each condition from the subfilter to the main filter
+                        // Since we can't directly combine filters, we need to replicate the conditions
+                        foreach (var prop in GetFilterProperties(subFilter))
+                        {
+                            filter.AddCondition(prop.Property, prop.Operator, prop.Value);
+                        }
+                    }
+                    
+                    return filter;
+                }
+                else if (filterSpec.Contains(" OR "))
+                {
+                    // Split by OR and create a filter with Any (OR) logic
+                    var conditions = filterSpec.Split(new[] { " OR " }, StringSplitOptions.None);
+                    var filter = new MessageFilter().SetLogic(FilterLogic.Any);
+                    
+                    foreach (var condition in conditions)
+                    {
+                        var subFilter = ParseSingleFilterCondition(condition);
+                        if (subFilter == null)
+                        {
+                            Console.WriteLine($"Warning: Invalid filter condition: {condition}");
+                            return null;
+                        }
+                        
+                        // Apply each condition from the subfilter to the main filter
+                        foreach (var prop in GetFilterProperties(subFilter))
+                        {
+                            filter.AddCondition(prop.Property, prop.Operator, prop.Value);
+                        }
+                    }
+                    
+                    return filter;
+                }
+                else
+                {
+                    // Single condition
+                    return ParseSingleFilterCondition(filterSpec);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error parsing filter: {ex.Message}");
+                return null;
+            }
+        }
+        
+        // For the demo, let's use a simpler approach to actually handle the composite
+        // filters better without needing direct access to filter internals
+        static void UseDirectCompositeFilters()
+        {
+            // This would be replaced with direct filtering in a real implementation
+            // For now we're using a simplified handling
+        }
+        
+        static MessageFilter? ParseSingleFilterCondition(string filterSpec)
+        {
             try
             {
                 var parts = filterSpec.Split(':');
@@ -441,6 +559,38 @@ namespace PstToolkitDemo
             }
             
             return count;
+        }
+        
+        /// <summary>
+        /// Counts messages in a folder and its subfolders that match the given filter.
+        /// </summary>
+        /// <param name="folder">The folder to check.</param>
+        /// <param name="filter">The message filter to apply.</param>
+        /// <param name="matchCount">Reference to a counter for matching messages.</param>
+        static void CountMatchingMessages(PstFolder folder, MessageFilter? filter, ref int matchCount)
+        {
+            if (filter == null) 
+            {
+                // If no filter, all messages match
+                matchCount += folder.MessageCount;
+            }
+            else
+            {
+                // Apply filter to messages in this folder
+                foreach (var message in folder.Messages)
+                {
+                    if (filter.Matches(message))
+                    {
+                        matchCount++;
+                    }
+                }
+            }
+            
+            // Recursively count in subfolders
+            foreach (var subFolder in folder.SubFolders)
+            {
+                CountMatchingMessages(subFolder, filter, ref matchCount);
+            }
         }
         
         static void AddSampleMessage(string pstFilePath, string folderName)

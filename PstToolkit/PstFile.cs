@@ -197,6 +197,70 @@ namespace PstToolkit
         /// <summary>
         /// Disposes the PST file, releasing resources.
         /// </summary>
+        
+        /// <summary>
+        /// Finds a folder by path.
+        /// </summary>
+        /// <param name="folderPath">Path to the folder, using '/' as separator (e.g., "Inbox/Subfolder").</param>
+        /// <returns>The found folder, or null if not found.</returns>
+        public PstFolder? FindFolder(string folderPath)
+        {
+            if (string.IsNullOrEmpty(folderPath))
+            {
+                return RootFolder;
+            }
+            
+            // Split path into parts
+            string[] parts = folderPath.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+            
+            PstFolder? currentFolder = RootFolder;
+            
+            // Traverse the folder hierarchy
+            foreach (var part in parts)
+            {
+                if (currentFolder == null)
+                {
+                    break;
+                }
+                
+                // Special handling for root folder references
+                if (part.Equals("Root", StringComparison.OrdinalIgnoreCase) && 
+                    currentFolder == RootFolder)
+                {
+                    continue;
+                }
+                
+                currentFolder = currentFolder.FindFolder(part, false);
+            }
+            
+            return currentFolder;
+        }
+        
+        /// <summary>
+        /// Gets messages from a folder with filtering.
+        /// </summary>
+        /// <param name="folderPath">Path to the folder, using '/' as separator (e.g., "Inbox/Subfolder").</param>
+        /// <param name="filter">Optional filter to apply to the messages.</param>
+        /// <returns>A filtered list of messages, or empty list if folder not found.</returns>
+        public IEnumerable<PstMessage> GetMessages(string folderPath, MessageFilter? filter = null)
+        {
+            var folder = FindFolder(folderPath);
+            if (folder == null)
+            {
+                return Enumerable.Empty<PstMessage>();
+            }
+            
+            if (filter == null)
+            {
+                return folder.Messages;
+            }
+            
+            return folder.GetFilteredMessages(filter);
+        }
+        
+        /// <summary>
+        /// Disposes resources used by the PST file.
+        /// </summary>
         public void Dispose()
         {
             Dispose(true);
@@ -409,18 +473,21 @@ namespace PstToolkit
         private void CopyFolderRecursive(PstFolder sourceFolder, PstFolder destFolder, 
             MessageFilter? filter, ref int processedMessages, int totalMessages, Action<double>? progressCallback)
         {
-            // Copy messages from source folder to destination folder
-            foreach (var message in sourceFolder.Messages)
+            // Get all messages in the source folder
+            var messages = sourceFolder.Messages.ToList();
+            
+            // Apply filter if specified to avoid processing messages that don't match
+            IEnumerable<PstMessage> filteredMessages = messages;
+            if (filter != null)
+            {
+                filteredMessages = filter.Apply(messages);
+            }
+            
+            // Process only the filtered messages
+            foreach (var message in filteredMessages)
             {
                 try
                 {
-                    // Apply filter if one is specified
-                    if (filter != null && !filter.Matches(message))
-                    {
-                        // Skip this message as it doesn't match the filter criteria
-                        continue;
-                    }
-                    
                     // Get message raw content and create a copy
                     byte[] rawContent = message.GetRawContent();
                     
