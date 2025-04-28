@@ -910,6 +910,12 @@
             </summary>
             <returns>A list of attachments.</returns>
         </member>
+        <member name="M:PstToolkit.PstMessage.GetAttachmentNodeIds">
+            <summary>
+            Gets the attachment node IDs for this message.
+            </summary>
+            <returns>A list of attachment node IDs.</returns>
+        </member>
         <member name="M:PstToolkit.PstMessage.GetNestedEmailAttachments">
             <summary>
             Gets all nested email messages from the attachments.
