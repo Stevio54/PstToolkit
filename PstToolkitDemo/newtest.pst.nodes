@@ -75,7 +75,10 @@
 215,216,37,2048,272,Sample Message 2025-04-28 17:20:17
 280441472,0,280375936,2048,54,
 152,0,37,2048,413,Sample Message 2025-04-28 17:31:56,SUBJECT=Sample Message 2025-04-28 17:31:56,SENDER_NAME=Sample Sender,SENDER_EMAIL=sender@example.com,SENT_DATE=2025-04-28T17:31:56.3737226+00:00,BODY_TEXT=This is a sample message created by PstToolkitDemo.
-
-Created on: 4/28/2025 5:31:56PM
-This message demonstrates the PstToolkit's ability to create and add messages to PST files.,IS_READ=False,HAS_ATTACHMENTS=True,IMPORTANCE=1
 216,217,37,2048,272,Sample Message 2025-04-28 17:31:56
+283559158,0,283493622,2048,54,
+153,0,37,2048,412,Sample Message 2025-04-28 17:35:59,SUBJECT=Sample Message 2025-04-28 17:35:59,SENDER_NAME=Sample Sender,SENDER_EMAIL=sender@example.com,SENT_DATE=2025-04-28T17:35:59.9759028+00:00,BODY_TEXT=This is a sample message created by PstToolkitDemo.
+
+Created on: 4/28/2025 5:35:59PM
+This message demonstrates the PstToolkit's ability to create and add messages to PST files.,IS_READ=False,HAS_ATTACHMENTS=True,IMPORTANCE=1
+217,218,37,2048,272,Sample Message 2025-04-28 17:35:59
