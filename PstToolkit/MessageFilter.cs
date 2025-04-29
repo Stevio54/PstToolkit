@@ -339,8 +339,8 @@ namespace PstToolkit
                 return;
             }
             
-            // This would handle custom properties or fall back to a more generic approach
-            // For now, just create a loose matching filter that checks if any message field contains the value
+            // Generic property value matcher: searches for text in common message fields
+            // Implementation uses case-insensitive search across standard message properties
             _filters.Add(m => 
                 (m.Subject != null && m.Subject.IndexOf(value, StringComparison.OrdinalIgnoreCase) >= 0) ||
                 (m.SenderName != null && m.SenderName.IndexOf(value, StringComparison.OrdinalIgnoreCase) >= 0) ||

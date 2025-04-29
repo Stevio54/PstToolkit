@@ -245,8 +245,11 @@ namespace PstToolkit.Formats
                 headerBytes[0x3FF] = 0x4E; // 'N'
             }
             
-            // Write the complete header
+            // Write the complete header with all needed PST structure data
             writer.Write(headerBytes);
+            
+            // Flush to ensure all data is written
+            writer.Flush();
         }
         
         /// <summary>
