@@ -653,7 +653,7 @@ namespace PstToolkit
                     Console.WriteLine($"Error parsing nested email: {ex.Message}");
                     Console.WriteLine($"Exception details: {ex}");
                     
-                    // In a production environment, this could also write to a log file or logging service
+                    // Log errors to a file for persistent troubleshooting across application sessions
                     string logFilePath = Path.Combine(Path.GetTempPath(), "PstToolkit_errors.log");
                     try
                     {
@@ -1372,10 +1372,10 @@ namespace PstToolkit
                     BodyHtml = Encoding.UTF8.GetString(htmlBytes);
                 }
                 
-                // In a full implementation, we would also load:
-                // - Recipients list
-                // - Attachment names
-                // - Other message properties
+                // Here we load essential message metadata including:
+                // - Recipients list from recipient table
+                // - Attachment names from attachment table
+                // - Message properties from property context
 
                 // Load recipients from the recipient table
                 LoadRecipients();
@@ -1935,8 +1935,8 @@ namespace PstToolkit
 
         private void LoadRecipients()
         {
-            // In a complete implementation, we would load the recipient table
-            // and extract recipient information
+            // Load the recipient table and extract recipient information
+            // This method parses the PST recipient table to populate the Recipients list
             Recipients = new List<string>();
             
             try

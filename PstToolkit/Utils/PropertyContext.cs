@@ -492,7 +492,7 @@ namespace PstToolkit.Utils
                     // Validate property type - most valid property types are under 32
                     if (propertyTypeValue > 32 && propertyTypeValue != 0x1F && propertyTypeValue != 0x102)
                     {
-                        // Skip this byte and try again - could be corrupted data
+                        // Skip this byte and try again - data format corruption recovery mechanism
                         reader.BaseStream.Position = currentPosition + 1;
                         bytesRead -= 3; // We only consumed 1 byte, not 4
                         continue;

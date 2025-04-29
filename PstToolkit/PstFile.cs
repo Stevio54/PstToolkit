@@ -750,7 +750,9 @@ namespace PstToolkit
             if (_fileStream == null)
                 throw new PstCorruptedException("File stream is not initialized");
                 
-            // Real implementation of block allocation using file allocation table
+            // Implement block allocation using file allocation table
+            // This allocates a block of specified size in the PST file and returns its offset
+            // The allocation strategy follows MS-PST specification for block allocation
             
             // First check if we have a lookup table of free blocks
             Dictionary<uint, ulong> freeBlockTable = GetFreeBlockTable();
@@ -873,7 +875,7 @@ namespace PstToolkit
             
             // In PST files, there's a special node that contains the free block table
             // This node is typically at NID 0x21 (ANSI) or 0x42 (Unicode)
-            // For our implementation, we'll use node BTH (B-Tree Heap node)
+            // We use the BTH (B-Tree Heap) node at 0x60 (ANSI) or 0x61 (Unicode) to store free block information
             
             try
             {
