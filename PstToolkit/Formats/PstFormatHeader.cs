@@ -94,41 +94,44 @@ namespace PstToolkit.Formats
                     return header;
                 }
                 
-                // Read the format type byte at offset 8
-                reader.BaseStream.Position = 8;
-                byte formatType = reader.ReadByte();
-                
-                // Determine format type based on the format byte (0 = ANSI, 1 = Unicode)
-                header.FormatType = formatType == 1 ? PstFormatType.Unicode : PstFormatType.Ansi;
-                
-                // Read version information
+                // Read version information at offset 10
                 reader.BaseStream.Position = 10;
                 header.MajorVersion = reader.ReadUInt16();
                 header.MinorVersion = reader.ReadUInt16();
                 
-                // Read B-tree root information
+                // Determine format type based on the major version
+                // According to Microsoft spec: version 23+ = Unicode, version 14 = ANSI
+                header.FormatType = (header.MajorVersion >= 23) ? PstFormatType.Unicode : PstFormatType.Ansi;
+                
+                // Read B-tree root information according to Microsoft PST File Format spec
                 if (header.FormatType == PstFormatType.Ansi)
                 {
-                    reader.BaseStream.Position = 0xA4;
+                    // ANSI Format (PST files 97-2002)
+                    reader.BaseStream.Position = 0x0C0;
                     header.NodeBTreeRoot = reader.ReadUInt32();
+                    reader.BaseStream.Position = 0x0C4;
                     header.BlockBTreeRoot = reader.ReadUInt32();
                     
-                    // B-tree start page is typically at offset 0x100 for ANSI PST
-                    header.BTreeOnHeapStartPage = 0x100;
+                    // B-tree start page is at offset 0x0E0 in ANSI format
+                    reader.BaseStream.Position = 0x0E0;
+                    header.BTreeOnHeapStartPage = reader.ReadUInt32();
                     
-                    // Root folder ID is typically 0x21 for ANSI PST
+                    // Root folder ID (NID_ROOT_FOLDER) is 0x21 for ANSI PST
                     header.RootFolderId = 0x21;
                 }
                 else
                 {
-                    reader.BaseStream.Position = 0xC4;
+                    // Unicode Format (PST files 2003+)
+                    reader.BaseStream.Position = 0x0D0;
                     header.NodeBTreeRoot = reader.ReadUInt32();
+                    reader.BaseStream.Position = 0x0D4;
                     header.BlockBTreeRoot = reader.ReadUInt32();
                     
-                    // B-tree start page is typically at offset 0x200 for Unicode PST
-                    header.BTreeOnHeapStartPage = 0x200;
+                    // B-tree start page is at offset 0x0F0 in Unicode format
+                    reader.BaseStream.Position = 0x0F0;
+                    header.BTreeOnHeapStartPage = reader.ReadUInt32();
                     
-                    // Root folder ID is typically 0x42 for Unicode PST
+                    // Root folder ID (NID_ROOT_FOLDER) is 0x42 for Unicode PST
                     header.RootFolderId = 0x42;
                 }
                 
@@ -159,20 +162,22 @@ namespace PstToolkit.Formats
                 IsValid = true
             };
             
-            // Set root nodes
+            // Set root nodes based on Microsoft PST file format spec
             if (formatType == PstFormatType.Ansi)
             {
-                header.NodeBTreeRoot = 0x0D;
-                header.BlockBTreeRoot = 0x0E;
-                header.BTreeOnHeapStartPage = 0x100;
-                header.RootFolderId = 0x21;
+                // ANSI format (PST 97-2002)
+                header.NodeBTreeRoot = 0x0D;            // NDB_ROOT_NID Node ID
+                header.BlockBTreeRoot = 0x0E;           // NDB_ROOT_BB Block ID
+                header.BTreeOnHeapStartPage = 0x4000;   // Start of B-tree on heap (allocation)
+                header.RootFolderId = 0x21;             // NID_ROOT_FOLDER
             }
             else
             {
-                header.NodeBTreeRoot = 0x1D;
-                header.BlockBTreeRoot = 0x1E;
-                header.BTreeOnHeapStartPage = 0x200;
-                header.RootFolderId = 0x42;
+                // Unicode format (PST 2003+)
+                header.NodeBTreeRoot = 0x1D;            // NDB_ROOT_NID Node ID
+                header.BlockBTreeRoot = 0x1E;           // NDB_ROOT_BB Block ID
+                header.BTreeOnHeapStartPage = 0x8000;   // Start of B-tree on heap (allocation)
+                header.RootFolderId = 0x42;             // NID_ROOT_FOLDER
             }
             
             return header;
@@ -194,39 +199,60 @@ namespace PstToolkit.Formats
             // Write signature (first 4 bytes)
             BitConverter.GetBytes(Signature).CopyTo(headerBytes, 0);
             
-            // Write format type info (offset 8)
-            headerBytes[8] = (byte)(IsAnsi ? 0 : 1);
-            
-            // Write version info (offset 10)
+            // Write version info (offset 10) - This is what determines ANSI vs Unicode format
             BitConverter.GetBytes(MajorVersion).CopyTo(headerBytes, 10);
             BitConverter.GetBytes(MinorVersion).CopyTo(headerBytes, 12);
             
             // Fill in other standard header fields
             
-            // Write file size (offset 0x78 for ANSI, 0xB8 for Unicode)
-            int fileSizeOffset = IsAnsi ? 0x78 : 0xB8;
+            // Write file size according to the PST File Format Specification
+            int fileSizeOffset = IsAnsi ? 0x0A8 : 0x0B8; // dwFileSize offset
             // Use the current stream length as the file size
             ulong fileSize = (ulong)writer.BaseStream.Length;
             // Ensure minimum size is the header size
             fileSize = Math.Max(fileSize, (ulong)headerSize);
             BitConverter.GetBytes(fileSize).CopyTo(headerBytes, fileSizeOffset);
             
-            // Set B-tree root info
-            int rootOffset = IsAnsi ? 0xA4 : 0xC4;
-            BitConverter.GetBytes(NodeBTreeRoot).CopyTo(headerBytes, rootOffset);
-            BitConverter.GetBytes(BlockBTreeRoot).CopyTo(headerBytes, rootOffset + 4);
+            // Set B-tree root info according to the Microsoft spec
+            if (IsAnsi)
+            {
+                // ANSI Format B-tree node values
+                BitConverter.GetBytes(NodeBTreeRoot).CopyTo(headerBytes, 0x0C0); // Root.nid NDB_ROOT_NID
+                BitConverter.GetBytes(BlockBTreeRoot).CopyTo(headerBytes, 0x0C4); // Root.nid NDB_ROOT_BB
+                
+                // Write the initial number of nodes in the B-tree
+                // For a new PST file, we typically start with root nodes plus a few system nodes
+                uint initialNodeCount = 5;
+                BitConverter.GetBytes(initialNodeCount).CopyTo(headerBytes, 0x0C8); // cEntries
+                
+                // Set B-tree heap start page
+                BitConverter.GetBytes(BTreeOnHeapStartPage).CopyTo(headerBytes, 0x0E0); // bidUnused (start of BBTREE)
+            }
+            else
+            {
+                // Unicode Format B-tree node values
+                BitConverter.GetBytes(NodeBTreeRoot).CopyTo(headerBytes, 0x0D0); // Root.nid NDB_ROOT_NID
+                BitConverter.GetBytes(BlockBTreeRoot).CopyTo(headerBytes, 0x0D4); // Root.nid NDB_ROOT_BB
+                
+                // Write the initial number of nodes in the B-tree
+                // For a new PST file, we typically start with root nodes plus a few system nodes
+                uint initialNodeCount = 7;
+                BitConverter.GetBytes(initialNodeCount).CopyTo(headerBytes, 0x0D8); // cEntries
+                
+                // Set B-tree heap start page
+                BitConverter.GetBytes(BTreeOnHeapStartPage).CopyTo(headerBytes, 0x0F0); // bidUnused (start of BBTREE)
+            }
             
-            // Write the initial number of nodes in the B-tree
-            // For a new PST file, we typically start with root nodes plus a few system nodes
-            uint initialNodeCount = IsAnsi ? 5u : 7u;
-            BitConverter.GetBytes(initialNodeCount).CopyTo(headerBytes, rootOffset + 8);
-            
-            // Set B-tree heap start page
-            BitConverter.GetBytes(BTreeOnHeapStartPage).CopyTo(headerBytes, rootOffset + 16);
-            
-            // Write root folder ID at appropriate location
-            int rootFolderOffset = IsAnsi ? 0xC4 : 0xE4;
-            BitConverter.GetBytes(RootFolderId).CopyTo(headerBytes, rootFolderOffset);
+            // Root folder ID - Store in a special field for reference during hierarchy table creation
+            // Not part of the standard header but needed for proper operation
+            if (IsAnsi)
+            {
+                BitConverter.GetBytes(RootFolderId).CopyTo(headerBytes, 0x184);
+            }
+            else
+            {
+                BitConverter.GetBytes(RootFolderId).CopyTo(headerBytes, 0x1A4);
+            }
             
             // Add a format verification value "!BDN" at the end of the header for both formats
             if (IsAnsi)
