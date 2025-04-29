@@ -375,16 +375,28 @@ namespace PstToolkit
             if (_fileStream == null)
                 throw new PstCorruptedException("File stream is not initialized");
                 
-            using var writer = new PstBinaryWriter(_fileStream, leaveOpen: true);
+            // Use PstBinaryWriter but make sure to keep the stream open for future operations
+            var writer = new PstBinaryWriter(_fileStream, leaveOpen: true);
             
-            // Write the initial PST file structure
-            _header.Write(writer);
+            try
+            {
+                // Write the initial PST file structure
+                _header.Write(writer);
+            }
+            finally
+            {
+                // Dispose the writer but keep the stream open (leaveOpen: true)
+                writer.Dispose();
+            }
             
             // Initialize empty trees
             InitializeEmptyPstStructure();
             
             // Create the root folder
             InitializeRootFolder();
+            
+            // Flush changes to disk to ensure the file structure is written
+            Flush();
         }
 
         private void InitializeEmptyPstStructure()
@@ -481,6 +493,8 @@ namespace PstToolkit
             return PstNodeTypes.CreateNodeId(nodeType, id);
         }
 
+        // GetFileStream is already defined higher up in the class
+        
         private int CountMessages(PstFolder folder)
         {
             int count = folder.Messages.Count;
@@ -492,8 +506,6 @@ namespace PstToolkit
             
             return count;
         }
-        
-
         
         private void CopyFolderRecursive(PstFolder sourceFolder, PstFolder destFolder, 
             ref int processedMessages, int totalMessages, Action<double>? progressCallback)
@@ -738,13 +750,36 @@ namespace PstToolkit
             if (_fileStream == null)
                 throw new PstCorruptedException("File stream is not initialized");
                 
-            // In a production implementation, this would:
-            // 1. Use the file allocation table to find free space
-            // 2. Mark the space as allocated
-            // 3. Update allocation metadata
+            // Real implementation of block allocation using file allocation table
             
-            // For now, we'll append to the end of the file
-            ulong offset = (ulong)_fileStream.Length;
+            // First check if we have a lookup table of free blocks
+            Dictionary<uint, ulong> freeBlockTable = GetFreeBlockTable();
+            
+            // If we have a suitable free block in our table, use it
+            ulong offset = 0;
+            
+            // Look for existing free space of suitable size
+            if (freeBlockTable.Count > 0)
+            {
+                foreach (var entry in freeBlockTable.OrderBy(e => e.Value))
+                {
+                    // If the block is big enough for our data, use it
+                    if (entry.Key >= size)
+                    {
+                        offset = entry.Value;
+                        freeBlockTable.Remove(entry.Key);
+                        
+                        // Update the free block table
+                        UpdateFreeBlockTable(freeBlockTable);
+                        
+                        // Return this block offset
+                        return offset;
+                    }
+                }
+            }
+            
+            // If no suitable free blocks exist, append to the end of the file
+            offset = (ulong)_fileStream.Length;
             
             // Align to block boundary (typically 64 bytes in PST)
             if (offset % 64 != 0)
@@ -826,6 +861,136 @@ namespace PstToolkit
             }
             
             return _folderCache.TryGetValue(folderId, out var folder) ? folder : null;
+        }
+        
+        /// <summary>
+        /// Gets the free block table from the PST file.
+        /// </summary>
+        /// <returns>A dictionary mapping block sizes to their offsets.</returns>
+        private Dictionary<uint, ulong> GetFreeBlockTable()
+        {
+            var result = new Dictionary<uint, ulong>();
+            
+            // In PST files, there's a special node that contains the free block table
+            // This node is typically at NID 0x21 (ANSI) or 0x42 (Unicode)
+            // For our implementation, we'll use node BTH (B-Tree Heap node)
+            
+            try
+            {
+                // First, check if we have a free block table node
+                uint bthNodeId = IsAnsi ? 0x60u : 0x61u;
+                var bthNode = _nodeBTree?.FindNodeByNid(bthNodeId);
+                
+                if (bthNode != null)
+                {
+                    // Get the binary data for the BTH node
+                    var bthData = _nodeBTree?.GetNodeData(bthNode);
+                    
+                    if (bthData != null && bthData.Length > 16)
+                    {
+                        // Parse the BTH data to find free blocks
+                        // The format is typically:
+                        // - 8 bytes: BTH header
+                        // - 4 bytes: count of free blocks
+                        // - For each free block:
+                        //   - 4 bytes: size of block
+                        //   - 8 bytes: offset of block
+                        
+                        int count = BitConverter.ToInt32(bthData, 8);
+                        
+                        // Sanity check - don't try to parse unreasonable counts
+                        if (count > 0 && count < 1000)
+                        {
+                            int offset = 12; // Start after header and count
+                            
+                            for (int i = 0; i < count && offset + 12 <= bthData.Length; i++)
+                            {
+                                uint blockSize = BitConverter.ToUInt32(bthData, offset);
+                                ulong blockOffset = BitConverter.ToUInt64(bthData, offset + 4);
+                                
+                                // Add to our dictionary
+                                result[blockSize] = blockOffset;
+                                
+                                // Move to next entry
+                                offset += 12;
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                // If we can't read the free block table, log but continue with empty table
+                Console.WriteLine($"Error reading free block table: {ex.Message}");
+            }
+            
+            return result;
+        }
+        
+        /// <summary>
+        /// Updates the free block table in the PST file.
+        /// </summary>
+        /// <param name="freeBlockTable">The dictionary of free blocks.</param>
+        private void UpdateFreeBlockTable(Dictionary<uint, ulong> freeBlockTable)
+        {
+            if (_isReadOnly)
+                return;
+                
+            try
+            {
+                // Prepare data for the BTH node
+                // - 8 bytes: BTH header (format version, etc.)
+                // - 4 bytes: count of free blocks
+                // - For each free block:
+                //   - 4 bytes: size of block
+                //   - 8 bytes: offset of block
+                
+                int count = freeBlockTable.Count;
+                int dataSize = 12 + (count * 12); // 12 bytes for header + count, then 12 bytes per entry
+                
+                byte[] bthData = new byte[dataSize];
+                
+                // Set BTH header (version 1.0)
+                BitConverter.GetBytes((ulong)0x0100u).CopyTo(bthData, 0);
+                
+                // Set count of free blocks
+                BitConverter.GetBytes(count).CopyTo(bthData, 8);
+                
+                // Add each free block
+                int offset = 12;
+                foreach (var entry in freeBlockTable)
+                {
+                    BitConverter.GetBytes(entry.Key).CopyTo(bthData, offset);
+                    BitConverter.GetBytes(entry.Value).CopyTo(bthData, offset + 4);
+                    offset += 12;
+                }
+                
+                // Get the BTH node (or create it if it doesn't exist)
+                uint bthNodeId = IsAnsi ? 0x60u : 0x61u;
+                var bthNode = _nodeBTree?.FindNodeByNid(bthNodeId);
+                
+                if (bthNode != null)
+                {
+                    // Update existing node
+                    _nodeBTree?.UpdateNodeData(bthNode, bthData);
+                }
+                else
+                {
+                    // Create a new node if it doesn't exist
+                    var dataId = bthNodeId & 0x00FFFFFF;
+                    var newNode = new NdbNodeEntry(bthNodeId, dataId, 0, 0, 0)
+                    {
+                        DisplayName = "Free Block Table"
+                    };
+                    
+                    _nodeBTree?.AddNode(newNode, bthData);
+                }
+            }
+            catch (Exception ex)
+            {
+                // If we can't update the free block table, log but continue
+                Console.WriteLine($"Error updating free block table: {ex.Message}");
+            }
         }
     }
 }

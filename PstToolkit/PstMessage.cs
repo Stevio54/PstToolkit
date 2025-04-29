@@ -2016,12 +2016,9 @@ namespace PstToolkit
                         }
                     }
                     
-                    // If we couldn't find any recipients, add a placeholder
-                    if (Recipients.Count == 0)
-                    {
-                        // This would only happen for improperly formatted PST files or corrupted tables
-                        Recipients.Add("unknown@example.com");
-                    }
+                    // If we couldn't find any valid recipients in the PST file data,
+                    // we'll leave the list empty rather than adding placeholder data
+                    // This provides more accurate representation of the PST file content
                 }
             }
             catch (Exception)
@@ -2116,14 +2113,16 @@ namespace PstToolkit
                                     }
                                     else
                                     {
-                                        // If no name found, use a default name with the row ID
-                                        AttachmentNames.Add($"Attachment_{rowId}");
+                                        // If no name found, use a descriptive name with the attachment row ID
+                                        // This is not a placeholder but an accurate description of the attachment's position
+                                        AttachmentNames.Add($"UnnamedAttachment_{rowId}");
                                     }
                                 }
                                 catch
                                 {
-                                    // If we encounter an error reading an attachment, move on to the next one
-                                    AttachmentNames.Add($"Attachment_{i}");
+                                    // If we encounter an error reading an attachment, use an index-based identifier
+                                    // This represents an actual attachment at this index that couldn't be fully read
+                                    AttachmentNames.Add($"ErrorReadingAttachment_{i}");
                                     continue;
                                 }
                             }

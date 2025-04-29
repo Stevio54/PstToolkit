@@ -598,6 +598,18 @@
             <param name="folderId">The folder ID.</param>
             <returns>The folder, or null if not found in the cache.</returns>
         </member>
+        <member name="M:PstToolkit.PstFile.GetFreeBlockTable">
+            <summary>
+            Gets the free block table from the PST file.
+            </summary>
+            <returns>A dictionary mapping block sizes to their offsets.</returns>
+        </member>
+        <member name="M:PstToolkit.PstFile.UpdateFreeBlockTable(System.Collections.Generic.Dictionary{System.UInt32,System.UInt64})">
+            <summary>
+            Updates the free block table in the PST file.
+            </summary>
+            <param name="freeBlockTable">The dictionary of free blocks.</param>
+        </member>
         <member name="T:PstToolkit.PstFolder">
             <summary>
             Represents a folder in a PST file.
@@ -1446,6 +1458,13 @@
             </summary>
             <param name="node">The node to load properties from.</param>
             <returns>True if properties were loaded successfully, false otherwise.</returns>
+        </member>
+        <member name="M:PstToolkit.Utils.PropertyContext.ReadRecoveryProperties(PstToolkit.Utils.PstBinaryReader,System.Int32)">
+            <summary>
+            Attempts to recover property data when standard parsing fails
+            </summary>
+            <param name="reader">The binary reader</param>
+            <param name="maxBytesToRead">Maximum bytes to attempt reading</param>
         </member>
         <member name="M:PstToolkit.Utils.PropertyContext.Save">
             <summary>

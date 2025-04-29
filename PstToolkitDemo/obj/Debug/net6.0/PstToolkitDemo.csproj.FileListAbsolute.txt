@@ -1,8 +1,3 @@
-/home/runner/workspace/PstToolkitDemo/obj/Debug/net6.0/PstToolkitDemo.csproj.AssemblyReference.cache
-/home/runner/workspace/PstToolkitDemo/obj/Debug/net6.0/PstToolkitDemo.GeneratedMSBuildEditorConfig.editorconfig
-/home/runner/workspace/PstToolkitDemo/obj/Debug/net6.0/PstToolkitDemo.AssemblyInfoInputs.cache
-/home/runner/workspace/PstToolkitDemo/obj/Debug/net6.0/PstToolkitDemo.AssemblyInfo.cs
-/home/runner/workspace/PstToolkitDemo/obj/Debug/net6.0/PstToolkitDemo.csproj.CoreCompileInputs.cache
 /home/runner/workspace/PstToolkitDemo/bin/Debug/net6.0/PstToolkitDemo
 /home/runner/workspace/PstToolkitDemo/bin/Debug/net6.0/PstToolkitDemo.deps.json
 /home/runner/workspace/PstToolkitDemo/bin/Debug/net6.0/PstToolkitDemo.runtimeconfig.json
@@ -15,6 +10,11 @@
 /home/runner/workspace/PstToolkitDemo/bin/Debug/net6.0/PstToolkit.dll
 /home/runner/workspace/PstToolkitDemo/bin/Debug/net6.0/PstToolkit.pdb
 /home/runner/workspace/PstToolkitDemo/bin/Debug/net6.0/PstToolkit.xml
+/home/runner/workspace/PstToolkitDemo/obj/Debug/net6.0/PstToolkitDemo.csproj.AssemblyReference.cache
+/home/runner/workspace/PstToolkitDemo/obj/Debug/net6.0/PstToolkitDemo.GeneratedMSBuildEditorConfig.editorconfig
+/home/runner/workspace/PstToolkitDemo/obj/Debug/net6.0/PstToolkitDemo.AssemblyInfoInputs.cache
+/home/runner/workspace/PstToolkitDemo/obj/Debug/net6.0/PstToolkitDemo.AssemblyInfo.cs
+/home/runner/workspace/PstToolkitDemo/obj/Debug/net6.0/PstToolkitDemo.csproj.CoreCompileInputs.cache
 /home/runner/workspace/PstToolkitDemo/obj/Debug/net6.0/PstToolkitDemo.csproj.CopyComplete
 /home/runner/workspace/PstToolkitDemo/obj/Debug/net6.0/PstToolkitDemo.dll
 /home/runner/workspace/PstToolkitDemo/obj/Debug/net6.0/refint/PstToolkitDemo.dll

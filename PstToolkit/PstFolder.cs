@@ -728,13 +728,9 @@ namespace PstToolkit
                     }
                 }
                 
-                // If no real subfolders were found and we're the root folder,
-                // add standard system folders as a fallback for demo purposes
-                if (_subFolders.Count == 0 && Type == FolderType.Root)
-                {
-                    Console.WriteLine("No real subfolders found, creating standard folders for root");
-                    CreateStandardFolders();
-                }
+                // We used to create standard folders as fallback, but for production
+                // we should only use what's actually in the PST file.
+                // If root folder has no subfolders, that's valid in certain PST files.
                 
                 _subFoldersLoaded = true;
             }

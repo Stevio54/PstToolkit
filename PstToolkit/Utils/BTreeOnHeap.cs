@@ -242,11 +242,25 @@ namespace PstToolkit.Utils
                 BitConverter.GetBytes((uint)0).CopyTo(rootPage, 8); // Parent page
                 
                 // Write the B-tree page to the PST file
+                if (pstFile.Header == null)
+                {
+                    throw new PstException("PST header is not initialized");
+                }
                 var bTreePageOffset = pstFile.Header.BTreeOnHeapStartPage;
-                using (var writer = new PstBinaryWriter(pstFile.GetFileStream()))
+                
+                // Get the file stream but keep it open (don't dispose it)
+                var fileStream = pstFile.GetFileStream();
+                var writer = new PstBinaryWriter(fileStream, leaveOpen: true);
+                
+                try
                 {
                     writer.BaseStream.Position = bTreePageOffset;
                     writer.Write(rootPage);
+                }
+                finally
+                {
+                    // Make sure to dispose the writer but keep the stream open
+                    writer.Dispose();
                 }
                 
                 // Initialize the B-tree metadata in memory
@@ -281,10 +295,57 @@ namespace PstToolkit.Utils
                     return;
                 }
                 
-                // Generate system default nodes if we don't have any cached
-                // Create the essential folder structure that all PST files have
+                // In a production PST file, we need to:
+                // 1. Read the actual nodes from the file if it exists
+                // 2. Create minimal necessary structure for a new file
                 
-                // Create root folder node
+                // First, try to read from the file
+                if (_pstFile != null)
+                {
+                    // Start with known offset for B-tree page
+                    ulong rootAddressOffset = (ulong)_pstFile.Header.BTreeOnHeapStartPage;
+                    var fileStream = _pstFile.GetFileStream();
+                    
+                    if (rootAddressOffset > 0 && fileStream != null && fileStream.Length > 0)
+                    {
+                        // Attempt to read existing nodes from the file
+                        Console.WriteLine($"Attempting to read B-tree from file at offset {rootAddressOffset}");
+                        
+                        try
+                        {
+                            // Position the stream at the root node address
+                            fileStream.Position = (long)rootAddressOffset;
+                            
+                            // Read the root node
+                            byte[] buffer = new byte[512]; // Typical node size
+                            int bytesRead = fileStream.Read(buffer, 0, buffer.Length);
+                            
+                            if (bytesRead > 0)
+                            {
+                                // Use the existing ReadBTreeNode method to process nodes
+                                // This will trigger the recursive traversal
+                                uint rootNodeId = _isAnsi ? 0x21u : 0x42u;
+                                ReadBTreeNode(rootNodeId);
+                                
+                                // If we successfully read nodes, return
+                                if (_nodeCache.Count > 0)
+                                {
+                                    Console.WriteLine($"Successfully read {_nodeCache.Count} nodes from file");
+                                    return;
+                                }
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"Error reading B-tree: {ex.Message}");
+                            // Continue to create minimal structure
+                        }
+                    }
+                }
+                
+                // If we reach here, we need to create a minimal structure for a new PST file
+                
+                // Create root folder node - this is the absolute minimum required
                 uint rootFolderId = _isAnsi ? 0x21u : 0x42u;
                 var rootNode = new NdbNodeEntry(
                     rootFolderId,
@@ -296,51 +357,8 @@ namespace PstToolkit.Utils
                 rootNode.DisplayName = "Root Folder";
                 _nodeCache[rootFolderId] = rootNode;
                 
-                // Create Inbox folder
-                uint inboxId;
-                if (_isAnsi)
-                    inboxId = 0x21u; // 0x1 << 5 | 0x1
-                else
-                    inboxId = 0x41u; // 0x2 << 5 | 0x1
-                var inboxNode = new NdbNodeEntry(
-                    inboxId,
-                    1001u,
-                    rootFolderId,
-                    512ul,
-                    512u
-                );
-                inboxNode.DisplayName = "Inbox";
-                _nodeCache[inboxId] = inboxNode;
-                
-                // Create a consistent node ID pattern
-                uint nodeIdBase = PstNodeTypes.NID_TYPE_FOLDER;
-                
-                // Create other essential folders (Sent Items, Deleted Items, etc.)
-                for (ushort i = 1; i <= 5; i++)
-                {
-                    uint folderId = (uint)(nodeIdBase << 5) | i;
-                    string folderName = i switch {
-                        1 => "Inbox",
-                        2 => "Sent Items",
-                        3 => "Deleted Items",
-                        4 => "Outbox",
-                        5 => "Drafts",
-                        _ => $"Folder {i}"
-                    };
-                    
-                    if (!_nodeCache.ContainsKey(folderId))
-                    {
-                        var folderNode = new NdbNodeEntry(
-                            folderId,
-                            (uint)(1000 + i),
-                            i == 1 ? inboxId : rootFolderId, // Inbox is parent for some subfolders
-                            (ulong)(512 * i),
-                            512u
-                        );
-                        folderNode.DisplayName = folderName;
-                        _nodeCache[folderId] = folderNode;
-                    }
-                }
+                // Create only the minimal required structure for a valid PST
+                // In a production environment, users will create folders as needed
                 
                 Console.WriteLine($"B-tree root initialized with {_nodeCache.Count} default nodes");
             }
@@ -475,10 +493,19 @@ namespace PstToolkit.Utils
                 var bTreePageOffset = _pstFile.Header.BTreeOnHeapStartPage;
                 byte[] rootPageData = new byte[512];
                 
-                using (var reader = new PstBinaryReader(_pstFile.GetFileStream()))
+                // Get the file stream but keep it open (don't dispose it)
+                var fileStream = _pstFile.GetFileStream();
+                var reader = new PstBinaryReader(fileStream, leaveOpen: true);
+                
+                try
                 {
                     reader.BaseStream.Position = bTreePageOffset;
                     reader.Read(rootPageData, 0, rootPageData.Length);
+                }
+                finally
+                {
+                    // Dispose the reader but keep the file stream open
+                    reader.Dispose();
                 }
                 
                 // Parse the B-tree page header
@@ -735,13 +762,17 @@ namespace PstToolkit.Utils
                 // Read the data from the PST file at the specified offset
                 byte[] data = new byte[node.DataSize];
                 
-                using (var stream = _pstFile.GetFileStream())
+                // Get the file stream but keep it open (don't dispose it)
+                var stream = _pstFile.GetFileStream();
+                var reader = new PstBinaryReader(stream, leaveOpen: true);
+                
+                try
                 {
                     // Position the stream at the data offset
-                    stream.Position = (long)node.DataOffset;
+                    reader.BaseStream.Position = (long)node.DataOffset;
                     
                     // Read the data into the buffer
-                    int bytesRead = stream.Read(data, 0, (int)node.DataSize);
+                    int bytesRead = reader.Read(data, 0, (int)node.DataSize);
                     
                     // Check if we got all the data
                     if (bytesRead < node.DataSize)
@@ -750,6 +781,11 @@ namespace PstToolkit.Utils
                         // Resize the array to match what was actually read
                         Array.Resize(ref data, bytesRead);
                     }
+                }
+                finally
+                {
+                    // Dispose the reader but keep the stream open
+                    reader.Dispose();
                 }
                 
                 return data;
@@ -875,10 +911,9 @@ namespace PstToolkit.Utils
             
             // Get the file size to help determine where new space can be allocated
             ulong fileSize = 0;
-            using (var stream = _pstFile.GetFileStream())
-            {
-                fileSize = (ulong)stream.Length;
-            }
+            // Get the file stream but keep it open (don't dispose it)
+            var stream = _pstFile.GetFileStream();
+            fileSize = (ulong)stream.Length;
             
             // Get the highest offset we've allocated so far
             ulong highestOffset = 0;
@@ -912,13 +947,11 @@ namespace PstToolkit.Utils
                 // Round up to a reasonable file size increment
                 newSize = ((newSize + maxGrowth - 1) / maxGrowth) * maxGrowth;
                 
-                using (var stream = _pstFile.GetFileStream())
+                // We already have a stream from earlier, reuse it
+                // Ensure the file is large enough
+                if (stream.Length < (long)newSize)
                 {
-                    // Ensure the file is large enough
-                    if (stream.Length < (long)newSize)
-                    {
-                        stream.SetLength((long)newSize);
-                    }
+                    stream.SetLength((long)newSize);
                 }
             }
             
@@ -942,16 +975,25 @@ namespace PstToolkit.Utils
             
             try
             {
-                using (var stream = _pstFile.GetFileStream())
+                // Get the file stream but keep it open (don't dispose it)
+                var stream = _pstFile.GetFileStream();
+                var writer = new PstBinaryWriter(stream, leaveOpen: true);
+                
+                try
                 {
                     // Position the stream at the specified offset
-                    stream.Position = (long)offset;
+                    writer.BaseStream.Position = (long)offset;
                     
                     // Write the data
-                    stream.Write(data, 0, data.Length);
+                    writer.Write(data);
                     
                     // Ensure the data is flushed to disk
-                    stream.Flush();
+                    writer.Flush();
+                }
+                finally
+                {
+                    // Dispose the writer but keep the stream open
+                    writer.Dispose();
                 }
             }
             catch (Exception ex)

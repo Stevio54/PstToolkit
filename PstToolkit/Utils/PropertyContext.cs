@@ -335,10 +335,32 @@ namespace PstToolkit.Utils
                     // Enhanced safety check to prevent excessive memory allocation
                     if (propertyCount < 0 || propertyCount > 10000) // Reasonable upper limit
                     {
-                        // Instead of throwing an exception, log the error and use an empty property set
-                        Console.WriteLine($"Warning: Invalid property count ({propertyCount}), using fallback properties");
-                        // Initialize empty properties dictionary and let fallback code below handle initialization
+                        // Initialize with a reasonably-sized dictionary
                         _properties = new Dictionary<uint, object>();
+                        
+                        // Try to recover by reading data with a more conservative approach
+                        if (nodeData.Length >= 8)
+                        {
+                            try
+                            {
+                                // Reset stream position and attempt to parse using fixed header size approach
+                                memStream.Position = 0;
+                                
+                                // Skip the problematic header (first 8 bytes assuming standard header)
+                                memStream.Position = 8;
+                                
+                                // Try to recover properties based on binary patterns
+                                ReadRecoveryProperties(reader, nodeData.Length - 8);
+                                
+                                return _properties.Count > 0;
+                            }
+                            catch
+                            {
+                                // Recovery attempt failed, continue with empty properties
+                                _properties.Clear();
+                            }
+                        }
+                        
                         return false;
                     }
                     
@@ -436,6 +458,131 @@ namespace PstToolkit.Utils
                    type == PropertyType.PT_UNICODE ||
                    type == PropertyType.PT_BINARY ||
                    type == PropertyType.PT_OBJECT;
+        }
+        
+        /// <summary>
+        /// Attempts to recover property data when standard parsing fails
+        /// </summary>
+        /// <param name="reader">The binary reader</param>
+        /// <param name="maxBytesToRead">Maximum bytes to attempt reading</param>
+        private void ReadRecoveryProperties(PstBinaryReader reader, int maxBytesToRead)
+        {
+            // This method attempts to parse properties even when the header is corrupt
+            // by looking for patterns in the binary data that match property structures
+            
+            int bytesRead = 0;
+            int maxProperties = 100; // Safety limit
+            int propertiesFound = 0;
+            
+            while (bytesRead < maxBytesToRead && propertiesFound < maxProperties)
+            {
+                long currentPosition = reader.BaseStream.Position;
+                
+                // Stop if we don't have enough bytes left to read a basic property (at least 4 bytes)
+                if (maxBytesToRead - bytesRead < 4)
+                    break;
+                    
+                try
+                {
+                    // Try to read a property ID and type
+                    ushort propertyId = reader.ReadUInt16();
+                    ushort propertyTypeValue = reader.ReadUInt16();
+                    bytesRead += 4;
+                    
+                    // Validate property type - most valid property types are under 32
+                    if (propertyTypeValue > 32 && propertyTypeValue != 0x1F && propertyTypeValue != 0x102)
+                    {
+                        // Skip this byte and try again - could be corrupted data
+                        reader.BaseStream.Position = currentPosition + 1;
+                        bytesRead -= 3; // We only consumed 1 byte, not 4
+                        continue;
+                    }
+                    
+                    PropertyType propertyType = (PropertyType)propertyTypeValue;
+                    
+                    // Variable-length properties have their size specified
+                    int valueSize = 0;
+                    
+                    // Check if this is a variable-length property type
+                    bool isVariableLength = IsVariableLengthType(propertyType);
+                    if (isVariableLength)
+                    {
+                        // Check if we have enough bytes to read the size
+                        if (maxBytesToRead - bytesRead < 4)
+                            break;
+                            
+                        valueSize = reader.ReadInt32();
+                        bytesRead += 4;
+                        
+                        // Validate size is reasonable
+                        if (valueSize < 0 || valueSize > maxBytesToRead - bytesRead)
+                        {
+                            // Skip this property and try to resync
+                            reader.BaseStream.Position = currentPosition + 1;
+                            bytesRead = (int)(reader.BaseStream.Position - (currentPosition + 4));
+                            continue;
+                        }
+                    }
+                    
+                    // Try to read the property value
+                    try 
+                    {
+                        object propertyValue = ReadPropertyValue(reader, propertyType, valueSize);
+                        
+                        // Only add the property if we successfully read a value
+                        if (propertyValue != null)
+                        {
+                            uint combinedKey = MakePropertyId(propertyId, propertyType);
+                            if (_properties != null)
+                            {
+                                _properties[combinedKey] = propertyValue;
+                                propertiesFound++;
+                            }
+                        }
+                        
+                        // Update bytes read for variable length properties
+                        if (isVariableLength)
+                        {
+                            bytesRead += valueSize;
+                        }
+                        else
+                        {
+                            // Fixed length properties have different sizes
+                            switch (propertyType)
+                            {
+                                case PropertyType.PT_BOOLEAN:
+                                    bytesRead += 1;
+                                    break;
+                                case PropertyType.PT_LONG:
+                                    bytesRead += 4;
+                                    break;
+                                case PropertyType.PT_LONGLONG:
+                                case PropertyType.PT_SYSTIME:
+                                case PropertyType.PT_DOUBLE:
+                                    bytesRead += 8;
+                                    break;
+                                default:
+                                    // Unknown property type - skip a byte to resync
+                                    reader.BaseStream.Position = currentPosition + 1;
+                                    bytesRead = (int)(reader.BaseStream.Position - currentPosition);
+                                    continue;
+                            }
+                        }
+                    }
+                    catch
+                    {
+                        // Failed to read property value - try to resync
+                        reader.BaseStream.Position = currentPosition + 1;
+                        bytesRead = (int)(reader.BaseStream.Position - currentPosition);
+                    }
+                }
+                catch
+                {
+                    // Error reading property - skip a byte and try again
+                    reader.BaseStream.Position = currentPosition + 1;
+                    bytesRead = (int)(reader.BaseStream.Position - currentPosition);
+                }
+            }
         }
         
         /// <summary>
@@ -564,10 +711,32 @@ namespace PstToolkit.Utils
                     // Enhanced safety check to prevent excessive memory allocation
                     if (propertyCount < 0 || propertyCount > 10000) // Reasonable upper limit
                     {
-                        // Instead of throwing an exception, log the error and use an empty property set
-                        Console.WriteLine($"Warning: Invalid property count ({propertyCount}), using fallback properties");
-                        // Initialize empty properties dictionary and let fallback code below handle initialization
+                        // Initialize with a reasonably-sized dictionary
                         _properties = new Dictionary<uint, object>();
+                        
+                        // Try to read properties in a different way
+                        if (nodeData.Length >= 8)
+                        {
+                            try
+                            {
+                                // Reset stream position and attempt to parse using fixed header size approach
+                                memStream.Position = 0;
+                                
+                                // Skip the problematic header (first 8 bytes assuming standard header)
+                                memStream.Position = 8;
+                                
+                                // Try to scan for property patterns
+                                ReadRecoveryProperties(reader, nodeData.Length - 8);
+                                
+                                return;
+                            }
+                            catch
+                            {
+                                // Recovery attempt failed, continue with empty properties
+                                _properties.Clear();
+                            }
+                        }
+                        
                         return;
                     }
                     
@@ -867,10 +1036,33 @@ namespace PstToolkit.Utils
                                 break;
                             
                             default:
-                                // For unsupported types, write a placeholder
+                                // For unsupported or unknown property types, write appropriate null values
+                                // Variable length properties get a zero size
                                 if (isVariableLength)
                                 {
-                                    writer.Write(0); // Zero size
+                                    writer.Write(0); // Zero size indicating null/empty
+                                }
+                                else
+                                {
+                                    // Fixed length properties - write zeros for the appropriate data size
+                                    // Most fixed properties are 4 bytes, unless it's a date/time or large int
+                                    switch (propType)
+                                    {
+                                        case PropertyType.PT_SYSTIME:
+                                        case PropertyType.PT_CURRENCY:
+                                        case PropertyType.PT_LONGLONG:
+                                            writer.Write((long)0);
+                                            break;
+                                        case PropertyType.PT_DOUBLE:
+                                            writer.Write((double)0);
+                                            break;
+                                        case PropertyType.PT_BOOLEAN:
+                                            writer.Write((byte)0);
+                                            break;
+                                        default:
+                                            writer.Write((int)0);
+                                            break;
+                                    }
                                 }
                                 break;
                         }

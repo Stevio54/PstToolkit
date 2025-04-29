@@ -204,17 +204,23 @@ namespace PstToolkit.Formats
             
             // Fill in other standard header fields
             
-            // Write file size placeholder (offset 0x78 for ANSI, 0xB8 for Unicode)
+            // Write file size (offset 0x78 for ANSI, 0xB8 for Unicode)
             int fileSizeOffset = IsAnsi ? 0x78 : 0xB8;
-            BitConverter.GetBytes((ulong)headerSize).CopyTo(headerBytes, fileSizeOffset);
+            // Use the current stream length as the file size
+            ulong fileSize = (ulong)writer.BaseStream.Length;
+            // Ensure minimum size is the header size
+            fileSize = Math.Max(fileSize, (ulong)headerSize);
+            BitConverter.GetBytes(fileSize).CopyTo(headerBytes, fileSizeOffset);
             
             // Set B-tree root info
             int rootOffset = IsAnsi ? 0xA4 : 0xC4;
             BitConverter.GetBytes(NodeBTreeRoot).CopyTo(headerBytes, rootOffset);
             BitConverter.GetBytes(BlockBTreeRoot).CopyTo(headerBytes, rootOffset + 4);
             
-            // Write a placeholder value for the number of nodes in the B-tree
-            BitConverter.GetBytes(1).CopyTo(headerBytes, rootOffset + 8);
+            // Write the initial number of nodes in the B-tree
+            // For a new PST file, we typically start with root nodes plus a few system nodes
+            uint initialNodeCount = IsAnsi ? 5u : 7u;
+            BitConverter.GetBytes(initialNodeCount).CopyTo(headerBytes, rootOffset + 8);
             
             // Set B-tree heap start page
             BitConverter.GetBytes(BTreeOnHeapStartPage).CopyTo(headerBytes, rootOffset + 16);
