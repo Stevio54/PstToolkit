@@ -20,8 +20,7 @@ namespace PstToolkit.Formats
     /// </summary>
     internal class PstFormatHeader
     {
-        private const uint ANSI_SIGNATURE = 0x4E444221;    // '!BDN'
-        private const uint UNICODE_SIGNATURE = 0x4E444242; // 'BBDN'
+        private const uint PST_SIGNATURE = 0x4E444221;    // '!BDN' - Common signature for both ANSI and Unicode PST files
 
         /// <summary>
         /// Gets the PST file signature.
@@ -88,19 +87,19 @@ namespace PstToolkit.Formats
                 reader.BaseStream.Position = 0;
                 header.Signature = reader.ReadUInt32();
                 
-                // Determine the format type based on the signature
-                switch (header.Signature)
+                // Validate that the signature matches the PST file format
+                if (header.Signature != PST_SIGNATURE)
                 {
-                    case ANSI_SIGNATURE:
-                        header.FormatType = PstFormatType.Ansi;
-                        break;
-                    case UNICODE_SIGNATURE:
-                        header.FormatType = PstFormatType.Unicode;
-                        break;
-                    default:
-                        header.IsValid = false;
-                        return header;
+                    header.IsValid = false;
+                    return header;
                 }
+                
+                // Read the format type byte at offset 8
+                reader.BaseStream.Position = 8;
+                byte formatType = reader.ReadByte();
+                
+                // Determine format type based on the format byte (0 = ANSI, 1 = Unicode)
+                header.FormatType = formatType == 1 ? PstFormatType.Unicode : PstFormatType.Ansi;
                 
                 // Read version information
                 reader.BaseStream.Position = 10;
@@ -154,7 +153,7 @@ namespace PstToolkit.Formats
             var header = new PstFormatHeader
             {
                 FormatType = formatType,
-                Signature = formatType == PstFormatType.Ansi ? ANSI_SIGNATURE : UNICODE_SIGNATURE,
+                Signature = PST_SIGNATURE, // Both ANSI and Unicode PST files use the same signature
                 MajorVersion = formatType == PstFormatType.Ansi ? (ushort)14 : (ushort)23,
                 MinorVersion = 0,
                 IsValid = true
@@ -229,7 +228,7 @@ namespace PstToolkit.Formats
             int rootFolderOffset = IsAnsi ? 0xC4 : 0xE4;
             BitConverter.GetBytes(RootFolderId).CopyTo(headerBytes, rootFolderOffset);
             
-            // Add a format verification value ("!BDN" or "BBDN")
+            // Add a format verification value "!BDN" at the end of the header for both formats
             if (IsAnsi)
             {
                 headerBytes[0x1FC] = 0x21; // '!'
@@ -239,7 +238,7 @@ namespace PstToolkit.Formats
             }
             else
             {
-                headerBytes[0x3FC] = 0x42; // 'B'
+                headerBytes[0x3FC] = 0x21; // '!'
                 headerBytes[0x3FD] = 0x42; // 'B'
                 headerBytes[0x3FE] = 0x44; // 'D'
                 headerBytes[0x3FF] = 0x4E; // 'N'
@@ -258,19 +257,8 @@ namespace PstToolkit.Formats
         /// <returns>True if the header is valid, false otherwise.</returns>
         private bool ValidateHeader()
         {
-            // Validate the signature
-            bool isValidSignature = false;
-            
-            if (FormatType == PstFormatType.Ansi && Signature == ANSI_SIGNATURE)
-            {
-                isValidSignature = true;
-            }
-            else if (FormatType == PstFormatType.Unicode && Signature == UNICODE_SIGNATURE)
-            {
-                isValidSignature = true;
-            }
-            
-            if (!isValidSignature)
+            // Validate the signature (both ANSI and Unicode PST files use the same '!BDN' signature)
+            if (Signature != PST_SIGNATURE)
             {
                 return false;
             }
